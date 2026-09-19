@@ -4,6 +4,7 @@ Controla la captura de video, cálculo de FPS, HUD táctico, alertas rojas de in
 y soporte para escaneo y cambio dinámico de múltiples cámaras / fuentes de video.
 """
 import time
+import threading
 from typing import Optional, Tuple, Dict, List, Any, Union
 import cv2
 import numpy as np
@@ -18,59 +19,96 @@ class CameraManager:
         self.is_running = False
         self.prev_time = 0.0
         self.fps = 0.0
+        self._lock = threading.Lock()
 
     @staticmethod
-    def list_available_cameras(max_tested: int = 4) -> List[Dict[str, Any]]:
+    def list_available_cameras(max_tested: int = 3, active_index: Optional[Union[int, str]] = None) -> List[Dict[str, Any]]:
         """
-        Escanea los puertos del sistema para detectar webcams conectadas.
-        Retorna una lista con los IDs y nombres descriptivos.
+        Escanea los puertos del sistema para detectar webcams conectadas sin interrumpir la cámara activa.
+        Diferencia automáticamente entre la webcam RGB y el sensor infrarrojo (IR).
         """
         available_cams = []
+        active_int = int(active_index) if active_index is not None and str(active_index).isdigit() else None
+
         for index in range(max_tested):
+            if active_int is not None and index == active_int:
+                available_cams.append({
+                    "id": index,
+                    "name": f"📷 Cámara #{index} (En Uso)",
+                    "type": "hardware"
+                })
+                continue
+
             temp_cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+            if not temp_cap.isOpened():
+                temp_cap = cv2.VideoCapture(index)
+
             if temp_cap.isOpened():
-                # Intentar leer un frame de prueba para certificar funcionamiento
-                ret, _ = temp_cap.read()
-                if ret:
+                ret, frame = temp_cap.read()
+                if ret and frame is not None:
+                    # Detectar si es sensor IR (pantalla oscura / infrarrojo)
+                    mean_lum = float(frame.mean())
+                    if mean_lum < 1.5:
+                        label = f"📷 Cámara #{index} (Sensor IR Infrarrojo)"
+                    else:
+                        label = f"📷 Cámara #{index} (Webcam RGB Color)"
+
                     available_cams.append({
                         "id": index,
-                        "name": f"📷 Cámara USB/Integrada #{index}",
+                        "name": label,
                         "type": "hardware"
                     })
                 temp_cap.release()
+
+        # Si no detectó ninguna, agregar al menos la #0
+        if not available_cams:
+            available_cams.append({"id": 0, "name": "📷 Cámara #0 (Principal)", "type": "hardware"})
+
         return available_cams
 
     def start(self) -> bool:
-        """Inicia la captura de video desde la fuente seleccionada."""
-        print(f"📷 Conectando a la fuente de video ({self.camera_index})...")
-        
-        # Si es un índice numérico en Windows, usamos DirectShow para velocidad
-        if isinstance(self.camera_index, int) or (isinstance(self.camera_index, str) and self.camera_index.isdigit()):
-            cam_idx = int(self.camera_index)
-            self.cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
-        else:
-            # Si es URL RTSP / HTTP o ruta de archivo de video
-            self.cap = cv2.VideoCapture(str(self.camera_index))
-        
-        if not self.cap.isOpened():
-            print(f"❌ Error: No se pudo acceder a la fuente {self.camera_index}.")
-            self.is_running = False
-            return False
+        """Inicia la captura de video con fallback automático de backends (DirectShow -> Default)."""
+        with self._lock:
+            print(f"📷 Conectando a la fuente de video ({self.camera_index})...")
+            
+            # Liberar si ya existía
+            if self.cap is not None:
+                try:
+                    self.cap.release()
+                except Exception:
+                    pass
+                self.cap = None
 
-        # Configuración de alta velocidad para eliminar lag en Windows
-        try:
-            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-        except Exception:
-            pass
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        self.cap.set(cv2.CAP_PROP_FPS, 30)
-        
-        self.is_running = True
-        self.prev_time = time.time()
-        print(f"✔️ Fuente de video {self.camera_index} optimizada a 640x480 (Buffer=1, MJPG).")
-        return True
+            # Si es un índice numérico en Windows
+            if isinstance(self.camera_index, int) or (isinstance(self.camera_index, str) and self.camera_index.isdigit()):
+                cam_idx = int(self.camera_index)
+                # 1. Intentar DirectShow
+                self.cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
+                if not self.cap.isOpened():
+                    # 2. Fallback a backend por defecto (MSMF en Windows)
+                    self.cap = cv2.VideoCapture(cam_idx)
+            else:
+                # Si es URL RTSP / HTTP o ruta de archivo de video
+                self.cap = cv2.VideoCapture(str(self.camera_index))
+            
+            if not self.cap or not self.cap.isOpened():
+                print(f"❌ Error: No se pudo acceder a la fuente {self.camera_index}.")
+                self.is_running = False
+                return False
+
+            # Configuración de resolución y buffer
+            try:
+                self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:
+                pass
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            self.cap.set(cv2.CAP_PROP_FPS, 30)
+            
+            self.is_running = True
+            self.prev_time = time.time()
+            print(f"✔️ Fuente de video {self.camera_index} iniciada a 640x480.")
+            return True
 
     def switch_source(self, new_source: Union[int, str]) -> bool:
         """
@@ -82,25 +120,26 @@ class CameraManager:
         return self.start()
 
     def read_frame(self) -> Tuple[bool, Optional[np.ndarray]]:
-        """Lee el siguiente frame y actualiza FPS."""
-        if not self.is_running or self.cap is None:
-            return False, None
+        """Lee el siguiente frame de forma segura y actualiza FPS."""
+        with self._lock:
+            if not self.is_running or self.cap is None:
+                return False, None
 
-        ret, frame = self.cap.read()
-        if not ret or frame is None:
-            return False, None
+            ret, frame = self.cap.read()
+            if not ret or frame is None:
+                return False, None
 
-        current_time = time.time()
-        diff = current_time - self.prev_time
-        if diff > 0:
-            instant_fps = 1.0 / diff
-            if self.fps <= 0.5:
-                self.fps = instant_fps
-            else:
-                self.fps = 0.85 * self.fps + 0.15 * instant_fps
-        self.prev_time = current_time
+            current_time = time.time()
+            diff = current_time - self.prev_time
+            if diff > 0:
+                instant_fps = 1.0 / diff
+                if self.fps <= 0.5:
+                    self.fps = instant_fps
+                else:
+                    self.fps = 0.85 * self.fps + 0.15 * instant_fps
+            self.prev_time = current_time
 
-        return True, frame
+            return True, frame
 
     def draw_hud(
         self,

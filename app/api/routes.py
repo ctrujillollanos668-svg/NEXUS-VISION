@@ -1,20 +1,23 @@
-"""
-Rutas y Endpoints Web para NEXUS VISION.
-"""
 import time
-from typing import Generator, Any
+import base64
+from datetime import datetime
+from typing import Generator, Any, Optional
+import cv2
+import numpy as np
 from pydantic import BaseModel
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pathlib import Path
 
 from app.services.vision_service import VisionService
+from app.services.remote_stream_manager import RemoteStreamManager
 from app.ai.ai_assistant import AIAssistant
 from app.database.database import SessionLocal
 from app.database.models import EventLog
 
 router = APIRouter()
 vision_service = VisionService.get_instance()
+remote_stream_manager = RemoteStreamManager.get_instance()
 ai_assistant = AIAssistant()
 
 class ChatRequest(BaseModel):
@@ -22,6 +25,15 @@ class ChatRequest(BaseModel):
 
 class CameraSwitchRequest(BaseModel):
     camera_id: Any
+
+class RemoteSnapshotUploadRequest(BaseModel):
+    image_base64: str
+    visitor_name: Optional[str] = "Visitante Remoto"
+
+class RemoteFramePushRequest(BaseModel):
+    stream_id: str
+    display_name: str
+    image_base64: str
 
 def generate_video_stream() -> Generator[bytes, None, None]:
     """Generador de streaming MJPEG de alta fluidez para navegadores web."""
@@ -48,7 +60,7 @@ def get_live_stats():
     return vision_service.get_stats()
 
 @router.get("/api/events")
-def get_event_history(limit: int = 30):
+def get_event_history(limit: int = 50):
     """Retorna el historial de eventos y alertas guardados en la base de datos."""
     db = SessionLocal()
     try:
@@ -112,6 +124,169 @@ def toggle_sound():
 def toggle_zones():
     new_state = vision_service.toggle_zones()
     return {"zones_enabled": new_state}
+
+@router.post("/api/toggle_auto_snapshot")
+def toggle_auto_snapshot():
+    new_state = vision_service.toggle_auto_snapshot()
+    return {"auto_snapshot": new_state}
+
+@router.post("/api/snapshot")
+def take_manual_snapshot():
+    """Toma una foto instantánea desde la cámara y la guarda en BD/storage."""
+    res = vision_service.take_snapshot(description="Captura Manual desde Dashboard", object_name="Captura Manual")
+    if res:
+        return {"success": True, "data": res}
+    return {"success": False, "message": "No se pudo tomar la captura (cámara inactiva)."}
+
+@router.post("/api/upload_remote_snapshot")
+def upload_remote_snapshot(req: RemoteSnapshotUploadRequest):
+    """Guarda una foto tomada por la cámara frontal del navegador del visitante."""
+    try:
+        raw_data = req.image_base64
+        if "," in raw_data:
+            raw_data = raw_data.split(",", 1)[1]
+        image_bytes = base64.b64decode(raw_data)
+        
+        snapshots_dir = Path(__file__).resolve().parent.parent.parent / "storage" / "snapshots"
+        now = datetime.now()
+        date_folder = snapshots_dir / now.strftime("%Y") / now.strftime("%m") / now.strftime("%d")
+        date_folder.mkdir(parents=True, exist_ok=True)
+        
+        filename = f"remoto_{now.strftime('%H%M%S_%f')[:10]}.jpg"
+        filepath = date_folder / filename
+        
+        with open(filepath, "wb") as f:
+            f.write(image_bytes)
+            
+        web_url = f"/snapshots/{now.strftime('%Y')}/{now.strftime('%m')}/{now.strftime('%d')}/{filename}"
+        
+        db = SessionLocal()
+        try:
+            event = EventLog(
+                event_type="REMOTE_VISITOR",
+                object_name=req.visitor_name or "Visitante Remoto",
+                confidence=1.0,
+                camera_id=0,
+                zone_name="Acceso Remoto",
+                alert_level="INFO",
+                description=f"Acceso registrado de visitante remoto ({req.visitor_name or 'Amigo'})",
+                snapshot_path=str(filepath),
+                created_at=now
+            )
+            db.add(event)
+            db.commit()
+            db.refresh(event)
+            print(f"📸 [VISITANTE REMOTO #{event.id}] Captura guardada con éxito en: {filepath}")
+            return {
+                "success": True,
+                "data": {
+                    "id": event.id,
+                    "snapshot_url": web_url,
+                    "time": now.strftime("%H:%M:%S"),
+                    "date": now.strftime("%Y-%m-%d")
+                }
+            }
+        except Exception as err:
+            db.rollback()
+            return {"success": False, "message": str(err)}
+        finally:
+            db.close()
+    except Exception as e:
+        return {"success": False, "message": f"Error procesando imagen: {e}"}
+
+@router.post("/api/remote_stream/push")
+def push_remote_frame(req: RemoteFramePushRequest):
+    """Recibe un fotograma en vivo desde la cámara remota del amigo/dispositivo."""
+    try:
+        if remote_stream_manager.is_expelled(req.stream_id):
+            return {"status": "expelled", "message": "Transmisión finalizada por el anfitrión."}
+
+        raw_data = req.image_base64
+        if "," in raw_data:
+            raw_data = raw_data.split(",", 1)[1]
+        img_bytes = base64.b64decode(raw_data)
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if frame is not None:
+            allowed = remote_stream_manager.register_or_update_frame(
+                stream_id=req.stream_id,
+                display_name=req.display_name,
+                frame=frame
+            )
+            if not allowed:
+                return {"status": "expelled", "message": "Transmisión finalizada por el anfitrión."}
+            return {"status": "ok"}
+        return {"status": "error", "message": "No se pudo decodificar la imagen"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@router.get("/api/remote_stream/status/{stream_id}")
+def check_stream_status(stream_id: str):
+    """Verifica si la transmisión remota sigue permitida o fue expulsada."""
+    return {"expelled": remote_stream_manager.is_expelled(stream_id)}
+
+@router.post("/api/remote_stream/expel/{stream_id}")
+def expel_remote_stream(stream_id: str):
+    """Expulsa la transmisión remota desde el panel del anfitrión."""
+    success = remote_stream_manager.expel_stream(stream_id)
+    # Si la cámara activa en visión era esta, revertir a cámara 0
+    if str(vision_service.cam.camera_index) == stream_id:
+        vision_service.switch_camera(0)
+    return {"success": success, "message": f"Dispositivo '{stream_id}' desconectado exitosamente."}
+
+@router.post("/api/remote_stream/snapshot/{stream_id}")
+def take_remote_snapshot(stream_id: str):
+    """Toma una foto instantánea directamente de la cámara del amigo conectado."""
+    frame = remote_stream_manager.get_frame(stream_id)
+    if frame is None:
+        return {"success": False, "message": "No hay señal de video de este dispositivo actualmente."}
+
+    now = datetime.now()
+    snapshots_dir = Path(__file__).resolve().parent.parent.parent / "storage" / "snapshots"
+    date_folder = snapshots_dir / now.strftime("%Y") / now.strftime("%m") / now.strftime("%d")
+    date_folder.mkdir(parents=True, exist_ok=True)
+
+    filename = f"remoto_manual_{now.strftime('%H%M%S_%f')[:10]}.jpg"
+    filepath = date_folder / filename
+
+    cv2.imwrite(str(filepath), frame)
+    web_url = f"/snapshots/{now.strftime('%Y')}/{now.strftime('%m')}/{now.strftime('%d')}/{filename}"
+
+    db = SessionLocal()
+    try:
+        event = EventLog(
+            event_type="REMOTE_SNAPSHOT",
+            object_name="Captura de Amigo",
+            confidence=1.0,
+            camera_id=0,
+            zone_name="Cámara Remota",
+            alert_level="INFO",
+            description=f"Captura instantánea tomada a {stream_id}",
+            snapshot_path=str(filepath),
+            created_at=now
+        )
+        db.add(event)
+        db.commit()
+        db.refresh(event)
+        return {
+            "success": True,
+            "data": {
+                "id": event.id,
+                "snapshot_url": web_url,
+                "time": now.strftime("%H:%M:%S"),
+                "date": now.strftime("%Y-%m-%d")
+            }
+        }
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "message": str(e)}
+    finally:
+        db.close()
+
+@router.get("/api/remote_stream/devices")
+def get_connected_devices():
+    """Retorna la lista de dispositivos remotos conectados activamente."""
+    return remote_stream_manager.get_active_streams_detail()
 
 @router.get("/api/cameras")
 def get_cameras():

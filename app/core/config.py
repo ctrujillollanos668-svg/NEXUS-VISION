@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     IOU_THRESHOLD: float = 0.65
     
     # Filtro de Movimiento
-    ONLY_MOVING_OBJECTS: bool = True
+    ONLY_MOVING_OBJECTS: bool = False
     MIN_MOTION_RATIO: float = 0.02
     
     # Zonas y Alertas

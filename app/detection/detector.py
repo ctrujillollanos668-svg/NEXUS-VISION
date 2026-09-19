@@ -116,8 +116,8 @@ class ObjectDetector:
             print(f"⚡ Aceleración por Hardware activada: {self.device_name}")
         else:
             self.device = "cpu"
-            num_threads = torch.get_num_threads()
-            self.device_name = f"CPU (Multihilo {num_threads}T)"
+            torch.set_num_threads(4)
+            self.device_name = "CPU (Optimizado 4T)"
             print(f"⚙️ Procesamiento en CPU optimizado: {self.device_name}")
 
         print(f"🧠 Cargando modelo de Inteligencia Artificial ({model_path})...")

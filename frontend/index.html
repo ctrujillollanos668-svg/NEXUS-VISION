@@ -72,6 +72,14 @@
 
                 <!-- Barra de Controles Rápidos -->
                 <div class="controls-bar">
+                    <button class="btn btn-primary" id="btnTakeSnapshot" style="background: linear-gradient(135deg, #00d2ff, #0078ff); border: none; font-weight: 600;">
+                        <span class="btn-icon">📸</span>
+                        <span>Tomar Foto</span>
+                    </button>
+                    <button class="btn btn-secondary" id="btnToggleAutoSnapshot">
+                        <span class="btn-icon">🤖</span>
+                        <span id="autoSnapshotBtnText">Foto Automática (ON)</span>
+                    </button>
                     <button class="btn btn-primary" id="btnToggleMotion">
                         <span class="btn-icon">⚡</span>
                         <span id="motionBtnText">Filtro: Solo Movimiento (ON)</span>
@@ -115,6 +123,19 @@
                         <div class="stat-label">ALERTAS ZONA</div>
                         <div class="stat-number" id="statAlerts">0</div>
                         <div class="stat-footer">🚨 Intrusiones Totales</div>
+                    </div>
+                </div>
+
+                <!-- Tarjeta de Dispositivos / Cámaras Remotas Conectadas -->
+                <div class="card devices-card" style="margin-bottom: 14px;">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">📡</span>
+                            <span>DISPOSITIVOS CONECTADOS (<span id="connectedDevicesCount">0</span>)</span>
+                        </div>
+                    </div>
+                    <div id="devicesListContainer" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                        <div class="empty-state" style="font-size: 0.84rem;">Esperando dispositivos remotos en /camara...</div>
                     </div>
                 </div>
 

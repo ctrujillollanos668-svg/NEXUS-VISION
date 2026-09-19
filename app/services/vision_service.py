@@ -12,6 +12,7 @@ from app.detection.detector import ObjectDetector
 from app.detection.motion_detector import MotionDetector
 from app.zones.zone_manager import ZoneManager
 from app.alerts.alert_manager import AlertManager
+from app.services.remote_stream_manager import RemoteStreamManager
 
 class VisionService:
     """Motor de procesamiento continuo de video con IA y streaming web."""
@@ -32,6 +33,7 @@ class VisionService:
         )
         self.motion_detector = MotionDetector()
         self.zone_manager = ZoneManager()
+        self.remote_stream_manager = RemoteStreamManager.get_instance()
         self.alert_manager = AlertManager(
             cooldown_seconds=settings.ALERT_COOLDOWN_SECONDS,
             enable_sound=settings.ENABLE_ALERT_SOUND,
@@ -43,6 +45,9 @@ class VisionService:
         )
 
         self.only_moving = settings.ONLY_MOVING_OBJECTS
+        self.auto_snapshot_enabled = True
+        self.last_auto_snapshot_time = 0.0
+        self.auto_snapshot_cooldown = 8.0
         self.is_running = False
         self.render_thread: Optional[threading.Thread] = None
         self.ai_thread: Optional[threading.Thread] = None
@@ -120,7 +125,21 @@ class VisionService:
                 zone_manager=self.zone_manager
             )
 
-            # 4. Actualizar estado compartido
+            # 4. Captura Automática Inteligente (si está activa y hay personas/dispositivos)
+            current_t = time.time()
+            if self.auto_snapshot_enabled and detections:
+                if current_t - self.last_auto_snapshot_time >= self.auto_snapshot_cooldown:
+                    # Priorizar personas o primer objeto
+                    target_det = next((d for d in detections if d.category in ["person", "device"]), detections[0])
+                    if target_det and target_det.confidence >= 0.40:
+                        self.last_auto_snapshot_time = current_t
+                        threading.Thread(
+                            target=self.take_snapshot,
+                            args=(f"Detección Automática: {target_det.class_name_es} ({int(target_det.confidence*100)}%)", target_det.class_name_es),
+                            daemon=True
+                        ).start()
+
+            # 5. Actualizar estado compartido
             with self._data_lock:
                 self._cached_detections = detections
                 self._cached_category_counts = category_counts
@@ -136,11 +155,39 @@ class VisionService:
 
     def _render_stream_loop(self):
         """Bucle de renderizado táctico y streaming web a 30 FPS constantes."""
+        failed_reads = 0
         while self.is_running:
-            success, frame = self.cam.read_frame()
+            current_cam_str = str(self.cam.camera_index)
+            is_remote = current_cam_str.startswith("remote_")
+
+            if is_remote:
+                frame = self.remote_stream_manager.get_frame(current_cam_str)
+                success = (frame is not None)
+            else:
+                success, frame = self.cam.read_frame()
+
             if not success or frame is None:
-                time.sleep(0.01)
+                failed_reads += 1
+                if not is_remote and failed_reads > 30 and failed_reads % 50 == 0:
+                    print("⚠️ Intentando reconectar cámara...")
+                    self.cam.start()
+
+                # Generar fotograma de espera
+                placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
+                title_msg = "ESPERANDO TRANSMISION DE CAMARA REMOTA..." if is_remote else "NEXUS VISION - ESPERANDO SENAL DE CAMARA"
+                cv2.putText(placeholder, title_msg, (40, 220),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 180), 2)
+                cv2.putText(placeholder, f"Canal activo: {current_cam_str} | Selecciona otra camara si no hay transmision", (40, 260),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.42, (200, 200, 200), 1)
+                
+                ret, buffer = cv2.imencode('.jpg', placeholder, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                if ret:
+                    with self._lock:
+                        self._latest_jpeg = buffer.tobytes()
+                time.sleep(0.05)
                 continue
+
+            failed_reads = 0
 
             # Guardar fotograma crudo para el hilo de IA
             with self._lock:
@@ -194,6 +241,7 @@ class VisionService:
                 "device_name": self.detector.device_name,
                 "scene_motion": round(self.current_scene_motion, 1),
                 "only_moving": self.only_moving,
+                "auto_snapshot": self.auto_snapshot_enabled,
                 "sound_enabled": self.alert_manager.enable_sound,
                 "zones_enabled": self.zone_manager.enabled,
                 "categories": self.current_category_counts,
@@ -206,32 +254,46 @@ class VisionService:
             }
 
     def list_cameras(self) -> Dict[str, Any]:
-        """Lista las cámaras disponibles en el sistema y la activa."""
-        available = CameraManager.list_available_cameras()
-        # Asegurar que al menos la cámara actual aparezca si no fue detectada por el escáner rápido
-        current_in_list = any(c["id"] == self.cam.camera_index for c in available)
+        """Lista las cámaras locales y remotas conectadas al sistema."""
+        local_cams = CameraManager.list_available_cameras(active_index=self.cam.camera_index)
+        remote_cams = self.remote_stream_manager.get_active_cameras()
+
+        all_cams = list(local_cams) + list(remote_cams)
+
+        current_in_list = any(str(c["id"]) == str(self.cam.camera_index) for c in all_cams)
         if not current_in_list:
-            available.insert(0, {
+            all_cams.insert(0, {
                 "id": self.cam.camera_index,
-                "name": f"📷 Cámara Actual ({self.cam.camera_index})",
+                "name": f"📷 Cámara #{self.cam.camera_index} (Activa)",
                 "type": "custom"
             })
         return {
             "current_camera": self.cam.camera_index,
-            "cameras": available
+            "cameras": all_cams
         }
 
     def switch_camera(self, new_camera: Any) -> bool:
-        """Cambia la cámara activa de forma segura."""
+        """Cambia la cámara activa de forma segura (soporta locales y remotas)."""
+        new_cam_str = str(new_camera)
         with self._lock:
-            success = self.cam.switch_source(new_camera)
-            if success:
-                self.alert_manager.camera_id = int(new_camera) if str(new_camera).isdigit() else 0
-            return success
+            if new_cam_str.startswith("remote_"):
+                self.cam.stop()
+                self.cam.camera_index = new_cam_str
+                print(f"✔️ Conectado a cámara remota: {new_cam_str}")
+                return True
+            else:
+                success = self.cam.switch_source(new_camera)
+                if success:
+                    self.alert_manager.camera_id = int(new_camera) if str(new_camera).isdigit() else 0
+                return success
 
     def toggle_motion(self) -> bool:
         self.only_moving = not self.only_moving
         return self.only_moving
+
+    def toggle_auto_snapshot(self) -> bool:
+        self.auto_snapshot_enabled = not self.auto_snapshot_enabled
+        return self.auto_snapshot_enabled
 
     def toggle_sound(self) -> bool:
         self.alert_manager.enable_sound = not self.alert_manager.enable_sound
@@ -240,6 +302,60 @@ class VisionService:
     def toggle_zones(self) -> bool:
         self.zone_manager.enabled = not self.zone_manager.enabled
         return self.zone_manager.enabled
+
+    def take_snapshot(self, description: str = "Captura Manual", object_name: str = "Foto Manual") -> Optional[Dict[str, Any]]:
+        """Toma una foto instantánea en alta resolución y la registra en la base de datos."""
+        with self._lock:
+            if self._raw_frame is None:
+                return None
+            frame = self._raw_frame.copy()
+
+        from datetime import datetime
+        from pathlib import Path
+        from app.database.database import SessionLocal
+        from app.database.models import EventLog
+
+        snapshots_dir = Path(__file__).resolve().parent.parent.parent / "storage" / "snapshots"
+        now = datetime.now()
+        date_folder = snapshots_dir / now.strftime("%Y") / now.strftime("%m") / now.strftime("%d")
+        date_folder.mkdir(parents=True, exist_ok=True)
+
+        filename = f"manual_{now.strftime('%H%M%S_%f')[:10]}.jpg"
+        filepath = date_folder / filename
+
+        cv2.imwrite(str(filepath), frame)
+        web_url = f"/snapshots/{now.strftime('%Y')}/{now.strftime('%m')}/{now.strftime('%d')}/{filename}"
+
+        db = SessionLocal()
+        try:
+            event = EventLog(
+                event_type="MANUAL_SNAPSHOT",
+                object_name=object_name,
+                confidence=1.0,
+                camera_id=self.cam.camera_index if isinstance(self.cam.camera_index, int) or str(self.cam.camera_index).isdigit() else 0,
+                zone_name="Control Manual",
+                alert_level="INFO",
+                description=description,
+                snapshot_path=str(filepath),
+                created_at=now
+            )
+            db.add(event)
+            db.commit()
+            db.refresh(event)
+            print(f"📸 [FOTO MANUAL #{event.id}] Captura guardada con éxito en: {filepath}")
+            return {
+                "id": event.id,
+                "snapshot_url": web_url,
+                "time": now.strftime("%H:%M:%S"),
+                "date": now.strftime("%Y-%m-%d"),
+                "description": description
+            }
+        except Exception as e:
+            print(f"❌ Error guardando captura manual en BD: {e}")
+            db.rollback()
+            return None
+        finally:
+            db.close()
 
     def stop(self):
         self.is_running = False

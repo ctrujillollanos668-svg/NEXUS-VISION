@@ -3,6 +3,7 @@ Motor de IA Generativa Multimodal Ultra Rápido para NEXUS VISION.
 Optimizado con miniatura ultraligera, límite de tokens y llamadas asíncronas para respuestas en < 1 segundo.
 """
 import io
+import asyncio
 import warnings
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -31,39 +32,46 @@ class AIAssistant:
     def _init_gemini(self):
         """Inicializa Google Gemini si la clave API está configurada en .env."""
         api_key = settings.GEMINI_API_KEY.strip()
-        if HAS_GENAI and api_key and api_key != "":
+        if HAS_GENAI and api_key and api_key.startswith("AIzaSy"):
             try:
                 genai.configure(api_key=api_key)
                 # Configuración de generación optimizada para velocidad y completitud
                 gen_config = genai.types.GenerationConfig(
-                    max_output_tokens=400,
+                    max_output_tokens=300,
                     temperature=0.7
                 )
+                model_name = "gemini-1.5-flash" if "3.6" in settings.AI_MODEL_NAME else settings.AI_MODEL_NAME
                 self.gemini_model = genai.GenerativeModel(
-                    settings.AI_MODEL_NAME,
+                    model_name,
                     generation_config=gen_config
                 )
-                print(f"✨ [AI Assistant] Google Gemini ({settings.AI_MODEL_NAME}) optimizado y conectado!")
+                print(f"✨ [AI Assistant] Google Gemini ({model_name}) optimizado y conectado!")
             except Exception as e:
                 print(f"⚠️ Error inicializando Gemini: {e}")
                 self.gemini_model = None
+        else:
+            self.gemini_model = None
 
     async def ask_async(self, query: str, scene_context: Dict[str, Any], frame_bytes: Optional[bytes] = None) -> str:
         """
-        Responde de forma asíncrona y no bloqueante.
+        Responde de forma asíncrona y no bloqueante con timeout estricto de 3.5 segundos.
         """
-        if self.gemini_model is None and settings.GEMINI_API_KEY.strip():
-            self._init_gemini()
-
         if self.gemini_model is not None:
-            return await self._ask_gemini_async(query, scene_context, frame_bytes)
+            try:
+                return await asyncio.wait_for(
+                    self._ask_gemini_async(query, scene_context, frame_bytes),
+                    timeout=3.5
+                )
+            except Exception as e:
+                print(f"⚠️ Timeout o error en Gemini ({e}), usando motor local instantáneo.")
+                return self._ask_local(query, scene_context)
 
         return self._ask_local(query, scene_context)
 
     async def _ask_gemini_async(self, query: str, scene_context: Dict[str, Any], frame_bytes: Optional[bytes]) -> str:
         """Consulta asíncrona ultra rápida a Google Gemini con imagen comprimida."""
         try:
-            inventory_str = ", ".join([f"{k} ({v})" for k, v in scene_context.get("inventory", {}).items()]) or "Sin objetos en movimiento"
+            inventory_str = ", ".join([f"{k} ({v})" for k, v in scene_context.get("inventory", {}).items()]) or "Sin objetos identificados"
             motion_str = f"{scene_context.get('scene_motion', 0.0):.1f}%"
             
             system_prompt = (
@@ -72,17 +80,16 @@ class AIAssistant:
                 f"Instrucciones:\n"
                 f"1. Responde siempre en español con frases completas, claras, fluidas y amigables.\n"
                 f"2. Si el usuario pregunta qué ves o qué hay, describe detalladamente los objetos, la persona, lo que tiene en las manos, gestos, colores y el entorno visible en la imagen.\n"
-                f"3. No dejes respuestas a medias ni cortes la frase.\n\n"
+                f"3. Responde en un solo párrafo conciso.\n\n"
                 f"Pregunta del usuario: {query}"
             )
 
             contents = [system_prompt]
 
-            # Optimización de Imagen: Redimensionar a max 512px para subida ultrarrápida
             if frame_bytes:
                 try:
                     pil_img = Image.open(io.BytesIO(frame_bytes))
-                    pil_img.thumbnail((512, 512), Image.Resampling.LANCZOS)
+                    pil_img.thumbnail((400, 400), Image.Resampling.LANCZOS)
                     contents.append(pil_img)
                 except Exception:
                     pass
@@ -98,16 +105,24 @@ class AIAssistant:
             return self._ask_local(query, scene_context)
 
     def _ask_local(self, query: str, ctx: Dict[str, Any]) -> str:
-        """Motor conversacional local de contingencia con comprensión robusta."""
+        """Motor conversacional local de contingencia con comprensión robusta e instantánea."""
         q = query.lower().strip()
         inventory = ctx.get("inventory", {})
         motion = ctx.get("scene_motion", 0.0)
 
-        if any(w in q for w in ["viendo", "ves", "hay", "escena", "frente", "ahora", "que tengo", "que hay", "mira", "mirmado", "mirando", "dime"]):
+        if any(w in q for w in ["foto", "captura", "snapshot", "fotografia", "toma una foto", "saca una foto"]):
+            from app.services.vision_service import VisionService
+            vs = VisionService.get_instance()
+            res = vs.take_snapshot(description="Captura por comando de voz/chat", object_name="Captura Asistente")
+            if res:
+                return f"📸 ¡Foto capturada con éxito! La imagen ha sido guardada en la base de datos y en tu historial a las {res.get('time')}."
+            return "No pude tomar la foto en este momento porque la cámara no está lista."
+
+        elif any(w in q for w in ["viendo", "ves", "hay", "escena", "frente", "ahora", "que tengo", "que hay", "mira", "mirando", "dime", "observas"]):
             if not inventory:
-                return f"En este momento la cámara está activa con {motion:.1f}% de movimiento, pero no detecto objetos nuevos en movimiento en el plano."
+                return f"En este momento la cámara está en línea con {motion:.1f}% de movimiento, pero no distingo objetos ni personas en el plano central."
             items_desc = [f"{qty} {name}" for name, qty in inventory.items()]
-            return f"👁️ En este momento observo en la cámara: {', '.join(items_desc)}, con un nivel de movimiento de la sala del {motion:.1f}%."
+            return f"👁️ En este momento observo en la cámara: {', '.join(items_desc)}, con un nivel de movimiento en sala del {motion:.1f}%."
 
         elif any(w in q for w in ["alerta", "intrusion", "restringida", "peligro"]):
             return self._query_alerts_history()

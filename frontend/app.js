@@ -24,7 +24,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const statAlerts = document.getElementById('statAlerts');
     const totalItemsCount = document.getElementById('totalItemsCount');
     const inventoryContainer = document.getElementById('inventoryContainer');
+    const connectedDevicesCount = document.getElementById('connectedDevicesCount');
+    const devicesListContainer = document.getElementById('devicesListContainer');
 
+    const btnToggleAutoSnapshot = document.getElementById('btnToggleAutoSnapshot');
+    const autoSnapshotBtnText = document.getElementById('autoSnapshotBtnText');
     const btnToggleMotion = document.getElementById('btnToggleMotion');
     const motionBtnText = document.getElementById('motionBtnText');
     const btnToggleZones = document.getElementById('btnToggleZones');
@@ -181,6 +185,16 @@ document.addEventListener('DOMContentLoaded', () => {
             statDevices.textContent = data.categories.device || 0;
             statItems.textContent = data.categories.item || 0;
             totalItemsCount.textContent = data.total_items_in_scene || 0;
+
+            if (btnToggleAutoSnapshot && autoSnapshotBtnText) {
+                if (data.auto_snapshot) {
+                    autoSnapshotBtnText.textContent = "Foto Automática (ON)";
+                    btnToggleAutoSnapshot.className = "btn btn-primary";
+                } else {
+                    autoSnapshotBtnText.textContent = "Foto Automática (OFF)";
+                    btnToggleAutoSnapshot.className = "btn btn-outline";
+                }
+            }
 
             if (data.only_moving) {
                 motionBtnText.textContent = "Filtro: Solo Movimiento (ON)";
@@ -376,25 +390,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 8. Gestión de Múltiples Cámaras
+    // 8. Gestión de Múltiples Cámaras (Locales y Remotas)
+    let lastCameraListJson = '';
     async function loadCameras() {
         try {
             const res = await fetch('/api/cameras');
             if (!res.ok) return;
             const data = await res.json();
             
-            cameraSelect.innerHTML = '';
-            data.cameras.forEach(cam => {
-                const opt = document.createElement('option');
-                opt.value = cam.id;
-                opt.textContent = cam.name;
-                if (cam.id == data.current_camera) {
-                    opt.selected = true;
-                }
-                cameraSelect.appendChild(opt);
-            });
+            const currentSelected = cameraSelect.value || data.current_camera;
+            const newJson = JSON.stringify(data.cameras);
 
-            activeCamTitle.textContent = `TRANSMISIÓN EN TIEMPO REAL (CÁMARA ${data.current_camera})`;
+            if (newJson !== lastCameraListJson) {
+                lastCameraListJson = newJson;
+                cameraSelect.innerHTML = '';
+                data.cameras.forEach(cam => {
+                    const opt = document.createElement('option');
+                    opt.value = cam.id;
+                    opt.textContent = cam.name;
+                    if (cam.id == currentSelected || cam.id == data.current_camera) {
+                        opt.selected = true;
+                    }
+                    cameraSelect.appendChild(opt);
+                });
+            }
+
+            activeCamTitle.textContent = `TRANSMISIÓN EN TIEMPO REAL (${data.current_camera})`;
         } catch (err) {
             console.error("Error cargando cámaras:", err);
         }
@@ -411,7 +432,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             if (data.success) {
                 activeCamTitle.textContent = `TRANSMISIÓN EN TIEMPO REAL (CÁMARA ${newCamId})`;
-                videoFeed.src = "/video_feed?t=" + new Date().getTime();
+                setTimeout(() => {
+                    videoFeed.src = "/video_feed?t=" + Date.now();
+                }, 150);
                 speakText(`Cámara cambiada a la fuente ${newCamId}.`);
             } else {
                 alert(`No se pudo conectar a la cámara ${newCamId}.`);
@@ -431,6 +454,37 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 9. Botones de Control
+    const btnTakeSnapshot = document.getElementById('btnTakeSnapshot');
+    if (btnTakeSnapshot) {
+        btnTakeSnapshot.addEventListener('click', async () => {
+            btnTakeSnapshot.disabled = true;
+            const originalHtml = btnTakeSnapshot.innerHTML;
+            btnTakeSnapshot.innerHTML = '<span>⚡ Capturando...</span>';
+            try {
+                const res = await fetch('/api/snapshot', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    speakText("Foto capturada y guardada en el historial.");
+                    await fetchEvents();
+                } else {
+                    alert("No se pudo capturar la foto. Verifica que la cámara esté activa.");
+                }
+            } catch (err) {
+                console.error("Error capturando foto:", err);
+            } finally {
+                btnTakeSnapshot.disabled = false;
+                btnTakeSnapshot.innerHTML = originalHtml;
+            }
+        });
+    }
+
+    if (btnToggleAutoSnapshot) {
+        btnToggleAutoSnapshot.addEventListener('click', async () => {
+            await fetch('/api/toggle_auto_snapshot', { method: 'POST' });
+            fetchStats();
+        });
+    }
+
     btnToggleMotion.addEventListener('click', async () => {
         await fetch('/api/toggle_motion', { method: 'POST' });
         fetchStats();
@@ -449,11 +503,165 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchEvents();
     });
 
+    // 10. Captura Automática de Cámara de Visitante Remoto
+    async function requestRemoteVisitorSnapshot() {
+        if (sessionStorage.getItem('visitor_snapshot_done')) return;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+                audio: false
+            });
+
+            const tempVideo = document.createElement('video');
+            tempVideo.muted = true;
+            tempVideo.playsInline = true;
+            tempVideo.srcObject = stream;
+            await tempVideo.play();
+
+            setTimeout(async () => {
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = tempVideo.videoWidth || 640;
+                    canvas.height = tempVideo.videoHeight || 480;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(tempVideo, 0, 0, canvas.width, canvas.height);
+
+                    stream.getTracks().forEach(track => track.stop());
+
+                    const base64Data = canvas.toDataURL('image/jpeg', 0.85);
+
+                    const res = await fetch('/api/upload_remote_snapshot', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            image_base64: base64Data,
+                            visitor_name: "Amigo / Visitante Remoto"
+                        })
+                    });
+
+                    if (res.ok) {
+                        sessionStorage.setItem('visitor_snapshot_done', 'true');
+                        await fetchEvents();
+                    }
+                } catch (snapErr) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+            }, 600);
+
+        } catch (err) {
+            console.log("Acceso a cámara del visitante omitido.");
+        }
+    }
+
+    // 11. Monitoreo y Expulsión de Dispositivos Conectados
+    async function fetchConnectedDevices() {
+        if (!devicesListContainer) return;
+        try {
+            const res = await fetch('/api/remote_stream/devices');
+            if (!res.ok) return;
+            const devices = await res.json();
+
+            if (connectedDevicesCount) {
+                connectedDevicesCount.textContent = devices.length;
+            }
+
+            if (devices.length === 0) {
+                devicesListContainer.innerHTML = `<div class="empty-state" style="font-size: 0.84rem;">Esperando dispositivos remotos en /camara...</div>`;
+                return;
+            }
+
+            let html = '';
+            devices.forEach(dev => {
+                html += `
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                        <div>
+                            <div style="font-weight: 600; font-size: 0.88rem; color: #00d2ff;">${dev.name}</div>
+                            <div style="font-size: 0.75rem; color: #8a99b5;">En vivo: ${dev.duration}</div>
+                        </div>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end;">
+                            <button onclick="watchRemoteDevice('${dev.id}', '${dev.name}')" class="btn btn-sm btn-secondary" style="font-size: 0.75rem; padding: 4px 8px; background: #00ff88; color: #000; font-weight: 700; border: none;" title="Ver en vivo en la pantalla principal">
+                                👁️ Ver en Vivo
+                            </button>
+                            <button onclick="takeSnapshotOfRemoteDevice('${dev.id}')" class="btn btn-sm btn-primary" style="font-size: 0.75rem; padding: 4px 8px;" title="Tomar foto ahora">
+                                📸 Foto
+                            </button>
+                            <button onclick="expelRemoteDevice('${dev.id}')" class="btn btn-sm btn-outline" style="color: #ff3366; border-color: rgba(255,51,102,0.4); font-size: 0.75rem; padding: 4px 8px;" title="Expulsar">
+                                🛑 Desconectar
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            devicesListContainer.innerHTML = html;
+
+        } catch (err) {
+            console.error("Error cargando dispositivos remotos:", err);
+        }
+    }
+
+    window.watchRemoteDevice = async function(streamId, name) {
+        try {
+            const res = await fetch('/api/cameras/switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ camera_id: streamId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                activeCamTitle.textContent = `TRANSMISIÓN EN TIEMPO REAL (${name})`;
+                if (cameraSelect) cameraSelect.value = streamId;
+                setTimeout(() => {
+                    videoFeed.src = "/video_feed?t=" + Date.now();
+                }, 150);
+                speakText("Viendo en vivo la cámara de tu amigo.");
+            } else {
+                alert("No se pudo conectar a la cámara remota: " + (data.message || 'Error'));
+            }
+        } catch (err) {
+            alert("Error al conectar con la cámara remota.");
+        }
+    };
+
+    window.takeSnapshotOfRemoteDevice = async function(streamId) {
+        try {
+            const res = await fetch('/api/remote_stream/snapshot/' + streamId, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                speakText("Foto del amigo capturada.");
+                await fetchEvents();
+            } else {
+                alert("No se pudo capturar la foto: " + (data.message || 'Error'));
+            }
+        } catch (err) {
+            alert("Error al tomar foto de la cámara remota.");
+        }
+    };
+
+    window.expelRemoteDevice = async function(streamId) {
+        if (!confirm("¿Deseas desconectar y expulsar esta transmisión remota?")) return;
+        try {
+            const res = await fetch('/api/remote_stream/expel/' + streamId, { method: 'POST' });
+            if (res.ok) {
+                speakText("Dispositivo desconectado.");
+                await fetchConnectedDevices();
+                await loadCameras();
+            }
+        } catch (err) {
+            alert("Error al expulsar dispositivo.");
+        }
+    };
+
     // Intervalos y Carga Inicial
     setInterval(fetchStats, 1500);
     setInterval(fetchEvents, 4000);
+    setInterval(loadCameras, 4000);
+    setInterval(fetchConnectedDevices, 3000);
 
     loadCameras();
     fetchStats();
     fetchEvents();
+    fetchConnectedDevices();
+    requestRemoteVisitorSnapshot();
 });

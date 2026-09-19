@@ -72,6 +72,11 @@ def get_dashboard():
     """Ruta principal: sirve el Dashboard HTML."""
     return FileResponse(FRONTEND_DIR / "index.html")
 
+@app.get("/camara")
+def get_remote_cam_page():
+    """Ruta para que amigos/dispositivos remotos transmitan su cámara."""
+    return FileResponse(FRONTEND_DIR / "camara.html")
+
 if __name__ == "__main__":
     uvicorn.run(
         app,

