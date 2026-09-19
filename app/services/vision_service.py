@@ -13,6 +13,7 @@ from app.detection.motion_detector import MotionDetector
 from app.zones.zone_manager import ZoneManager
 from app.alerts.alert_manager import AlertManager
 from app.services.remote_stream_manager import RemoteStreamManager
+from app.services.ip_camera_manager import IPCameraManager
 
 class VisionService:
     """Motor de procesamiento continuo de video con IA y streaming web."""
@@ -34,6 +35,7 @@ class VisionService:
         self.motion_detector = MotionDetector()
         self.zone_manager = ZoneManager()
         self.remote_stream_manager = RemoteStreamManager.get_instance()
+        self.ip_camera_manager = IPCameraManager.get_instance()
         self.alert_manager = AlertManager(
             cooldown_seconds=settings.ALERT_COOLDOWN_SECONDS,
             enable_sound=settings.ENABLE_ALERT_SOUND,
@@ -254,11 +256,12 @@ class VisionService:
             }
 
     def list_cameras(self) -> Dict[str, Any]:
-        """Lista las cámaras locales y remotas conectadas al sistema."""
+        """Lista las cámaras locales, IP/RTSP y remotas conectadas al sistema."""
         local_cams = CameraManager.list_available_cameras(active_index=self.cam.camera_index)
+        ip_cams = self.ip_camera_manager.get_cameras()
         remote_cams = self.remote_stream_manager.get_active_cameras()
 
-        all_cams = list(local_cams) + list(remote_cams)
+        all_cams = list(local_cams) + list(ip_cams) + list(remote_cams)
 
         current_in_list = any(str(c["id"]) == str(self.cam.camera_index) for c in all_cams)
         if not current_in_list:
@@ -273,7 +276,7 @@ class VisionService:
         }
 
     def switch_camera(self, new_camera: Any) -> bool:
-        """Cambia la cámara activa de forma segura (soporta locales y remotas)."""
+        """Cambia la cámara activa de forma segura (soporta locales, IP/RTSP de seguridad y remotas)."""
         new_cam_str = str(new_camera)
         with self._lock:
             if new_cam_str.startswith("remote_"):
@@ -281,6 +284,18 @@ class VisionService:
                 self.cam.camera_index = new_cam_str
                 print(f"✔️ Conectado a cámara remota: {new_cam_str}")
                 return True
+            elif new_cam_str.startswith("ip_cam_"):
+                cams = self.ip_camera_manager.get_cameras()
+                cam_info = next((c for c in cams if c["id"] == new_cam_str), None)
+                if not cam_info:
+                    print(f"❌ Cámara IP {new_cam_str} no encontrada en el catálogo.")
+                    return False
+                success = self.cam.switch_source(cam_info["url"])
+                if success:
+                    self.cam.camera_index = new_cam_str
+                    self.alert_manager.camera_id = 0
+                    print(f"✔️ Conectado exitosamente a cámara de seguridad: {cam_info['name']}")
+                return success
             else:
                 success = self.cam.switch_source(new_camera)
                 if success:
@@ -304,7 +319,7 @@ class VisionService:
         return self.zone_manager.enabled
 
     def take_snapshot(self, description: str = "Captura Manual", object_name: str = "Foto Manual") -> Optional[Dict[str, Any]]:
-        """Toma una foto instantánea en alta resolución y la registra en la base de datos."""
+        """Toma una foto instantánea en alta resolución y la guarda organizada en la carpeta de su cámara."""
         with self._lock:
             if self._raw_frame is None:
                 return None
@@ -315,25 +330,36 @@ class VisionService:
         from app.database.database import SessionLocal
         from app.database.models import EventLog
 
+        cam_idx_str = str(self.cam.camera_index)
+        if cam_idx_str.startswith("remote_"):
+            cam_folder = f"camara_amigo_{cam_idx_str.replace('remote_disp_', '').replace('remote_', '')}"
+            cam_label = f"Amigo ({cam_idx_str.replace('remote_disp_', '#')})"
+        elif cam_idx_str.startswith("ip_cam_"):
+            cam_folder = f"camara_{cam_idx_str}"
+            cam_label = f"Cámara IP ({cam_idx_str})"
+        else:
+            cam_folder = f"webcam_{cam_idx_str}_local"
+            cam_label = f"Webcam #{cam_idx_str}"
+
         snapshots_dir = Path(__file__).resolve().parent.parent.parent / "storage" / "snapshots"
         now = datetime.now()
-        date_folder = snapshots_dir / now.strftime("%Y") / now.strftime("%m") / now.strftime("%d")
+        date_folder = snapshots_dir / cam_folder / now.strftime("%Y-%m-%d")
         date_folder.mkdir(parents=True, exist_ok=True)
 
-        filename = f"manual_{now.strftime('%H%M%S_%f')[:10]}.jpg"
+        filename = f"captura_{now.strftime('%H%M%S_%f')[:10]}.jpg"
         filepath = date_folder / filename
 
-        cv2.imwrite(str(filepath), frame)
-        web_url = f"/snapshots/{now.strftime('%Y')}/{now.strftime('%m')}/{now.strftime('%d')}/{filename}"
+        cv2.imwrite(str(filepath), frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        web_url = f"/snapshots/{cam_folder}/{now.strftime('%Y-%m-%d')}/{filename}"
 
         db = SessionLocal()
         try:
             event = EventLog(
                 event_type="MANUAL_SNAPSHOT",
-                object_name=object_name,
+                object_name=f"{object_name} [{cam_label}]",
                 confidence=1.0,
                 camera_id=self.cam.camera_index if isinstance(self.cam.camera_index, int) or str(self.cam.camera_index).isdigit() else 0,
-                zone_name="Control Manual",
+                zone_name=cam_label,
                 alert_level="INFO",
                 description=description,
                 snapshot_path=str(filepath),
@@ -342,12 +368,13 @@ class VisionService:
             db.add(event)
             db.commit()
             db.refresh(event)
-            print(f"📸 [FOTO MANUAL #{event.id}] Captura guardada con éxito en: {filepath}")
+            print(f"📸 [FOTO GUARDADA #{event.id}] Guardada en carpeta '{cam_folder}': {filepath.name}")
             return {
                 "id": event.id,
                 "snapshot_url": web_url,
                 "time": now.strftime("%H:%M:%S"),
                 "date": now.strftime("%Y-%m-%d"),
+                "camera_label": cam_label,
                 "description": description
             }
         except Exception as e:

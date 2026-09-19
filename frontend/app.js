@@ -266,18 +266,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 const badgeClass = isAlert ? 'event-badge alert' : 'event-badge info';
                 const badgeText = isAlert ? '🚨 ALERTA' : '📸 REGISTRO';
                 const thumbUrl = e.snapshot_url || '/placeholder.jpg';
+                const safeDesc = (e.description || 'Captura de seguridad').replace(/'/g, "\\'");
+                const camLabel = e.zone_name || 'Webcam Principal';
 
                 html += `
-                    <div class="${cardClass}" onclick="openSnapshotModal('${thumbUrl}', '${e.description}', '${e.date} ${e.time}')">
-                        <div class="event-thumb-wrap">
+                    <div class="${cardClass}" onclick="openSnapshotModal(${e.id}, '${thumbUrl}', '${safeDesc}', '${e.date} ${e.time}', '${camLabel}')" style="cursor: pointer; position: relative;">
+                        <div class="event-thumb-wrap" style="position: relative;">
                             <img src="${thumbUrl}" alt="${e.object_name}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'200\\' height=\\'120\\' viewBox=\\'0 0 200 120\\'><rect fill=\\'%23111\\' width=\\'200\\' height=\\'120\\'/><text fill=\\'%23555\\' x=\\'50%\\' y=\\'50%\\' text-anchor=\\'middle\\'>Captura</text></svg>'">
                             <span class="${badgeClass}">${badgeText}</span>
+                            <button onclick="deleteEventSnapshot(event, ${e.id})" title="Eliminar Foto" style="position: absolute; top: 8px; right: 8px; background: rgba(10, 15, 26, 0.85); border: 1px solid rgba(255, 0, 85, 0.6); color: #ff0055; border-radius: 6px; padding: 4px 8px; font-size: 0.75rem; cursor: pointer; backdrop-filter: blur(4px); z-index: 5;">
+                                🗑️
+                            </button>
                         </div>
                         <div class="event-card-body">
                             <div class="event-object-title">${e.object_name} (${e.confidence}%)</div>
-                            <div class="event-meta">
-                                <span>${e.zone_name || 'Cámara Principal'}</span>
-                                <span>${e.time}</span>
+                            <div class="event-meta" style="margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
+                                <span style="background: rgba(0, 242, 254, 0.12); color: #00f2fe; padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">📷 ${camLabel}</span>
+                                <span style="font-size: 0.72rem; color: #8a99b5;">${e.time}</span>
                             </div>
                         </div>
                     </div>
@@ -290,6 +295,66 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error("Error cargando historial de eventos:", err);
         }
     }
+
+    // Modal de Visualización y Eliminación de Fotos
+    const imageModal = document.getElementById('imageModal');
+    const modalImage = document.getElementById('modalImage');
+    const modalInfo = document.getElementById('modalInfo');
+    const modalClose = document.getElementById('modalClose');
+    const btnDeleteModalImage = document.getElementById('btnDeleteModalImage');
+    let currentOpenEventId = null;
+
+    if (modalClose) {
+        modalClose.addEventListener('click', () => {
+            imageModal.classList.remove('active');
+        });
+    }
+
+    imageModal?.addEventListener('click', (e) => {
+        if (e.target === imageModal) imageModal.classList.remove('active');
+    });
+
+    window.openSnapshotModal = function(eventId, imgUrl, description, dateStr, camName) {
+        if (!imageModal || !modalImage) return;
+        currentOpenEventId = eventId;
+        modalImage.src = imgUrl;
+        if (modalInfo) {
+            modalInfo.innerHTML = `
+                <div style="font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 4px;">${description}</div>
+                <div style="font-size: 0.82rem; color: #8a99b5; display: flex; gap: 12px; align-items: center;">
+                    <span>🕒 ${dateStr}</span>
+                    <span style="background: rgba(0, 242, 254, 0.15); color: #00f2fe; padding: 2px 8px; border-radius: 4px; font-weight: 600;">📷 ${camName}</span>
+                </div>
+            `;
+        }
+        imageModal.classList.add('active');
+    };
+
+    if (btnDeleteModalImage) {
+        btnDeleteModalImage.addEventListener('click', async () => {
+            if (!currentOpenEventId) return;
+            await deleteEventSnapshot(null, currentOpenEventId);
+        });
+    }
+
+    window.deleteEventSnapshot = async function(event, eventId) {
+        if (event) event.stopPropagation();
+        if (!confirm(`¿Deseas eliminar permanentemente esta foto y su registro de seguridad (#${eventId})?`)) return;
+
+        try {
+            const res = await fetch(`/api/events/${eventId}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                if (imageModal) imageModal.classList.remove('active');
+                speakText("Foto eliminada.");
+                await fetchEvents();
+            } else {
+                alert("No se pudo eliminar la foto: " + (data.message || 'Error'));
+            }
+        } catch (e) {
+            alert("Error al intentar eliminar la foto.");
+        }
+    };
 
     // 6. Chat con IA Rápido con Indicador de Pensando
     async function sendChatMessage(msg) {
@@ -652,6 +717,261 @@ document.addEventListener('DOMContentLoaded', () => {
             alert("Error al expulsar dispositivo.");
         }
     };
+
+    // ==========================================
+    // GESTIÓN DE CÁMARAS DE SEGURIDAD REALES (IP / RTSP)
+    // ==========================================
+    const modalIpCam = document.getElementById('modalIpCam');
+    const btnAddIpCam = document.getElementById('btnAddIpCam');
+    const btnCloseIpCamModal = document.getElementById('btnCloseIpCamModal');
+    const btnTestIpCam = document.getElementById('btnTestIpCam');
+    const btnSaveIpCam = document.getElementById('btnSaveIpCam');
+    const ipCamName = document.getElementById('ipCamName');
+    const ipCamUrl = document.getElementById('ipCamUrl');
+    const ipCamFeedback = document.getElementById('ipCamFeedback');
+    const savedIpCamsList = document.getElementById('savedIpCamsList');
+
+    const tabBtnPublicCams = document.getElementById('tabBtnPublicCams');
+    const tabBtnCustomCam = document.getElementById('tabBtnCustomCam');
+    const tabContentPublicCams = document.getElementById('tabContentPublicCams');
+    const tabContentCustomCam = document.getElementById('tabContentCustomCam');
+    const publicCamsContainer = document.getElementById('publicCamsContainer');
+
+    if (tabBtnPublicCams && tabBtnCustomCam) {
+        tabBtnPublicCams.addEventListener('click', () => {
+            tabBtnPublicCams.className = 'btn btn-sm btn-primary';
+            tabBtnCustomCam.className = 'btn btn-sm btn-outline';
+            tabContentPublicCams.style.display = 'flex';
+            tabContentCustomCam.style.display = 'none';
+        });
+
+        tabBtnCustomCam.addEventListener('click', () => {
+            tabBtnCustomCam.className = 'btn btn-sm btn-primary';
+            tabBtnPublicCams.className = 'btn btn-sm btn-outline';
+            tabContentPublicCams.style.display = 'none';
+            tabContentCustomCam.style.display = 'flex';
+            loadSavedIpCameras();
+        });
+    }
+
+    if (btnAddIpCam) {
+        btnAddIpCam.addEventListener('click', () => {
+            modalIpCam.classList.add('active');
+            if (ipCamFeedback) ipCamFeedback.style.display = 'none';
+            loadPublicCameras();
+            loadSavedIpCameras();
+        });
+    }
+
+    if (btnCloseIpCamModal) {
+        btnCloseIpCamModal.addEventListener('click', () => {
+            modalIpCam.classList.remove('active');
+        });
+    }
+
+    modalIpCam?.addEventListener('click', (e) => {
+        if (e.target === modalIpCam) modalIpCam.classList.remove('active');
+    });
+
+    async function loadPublicCameras() {
+        if (!publicCamsContainer) return;
+        try {
+            const res = await fetch('/api/public_cameras');
+            if (!res.ok) return;
+            const list = await res.json();
+            if (list.length === 0) {
+                publicCamsContainer.innerHTML = '<span style="font-size: 0.8rem; color: #64748b;">No hay cámaras públicas disponibles.</span>';
+                return;
+            }
+            publicCamsContainer.innerHTML = '';
+            list.forEach(cam => {
+                const card = document.createElement('div');
+                card.style.cssText = 'background: rgba(10, 15, 26, 0.7); border: 1px solid rgba(0, 242, 254, 0.2); border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px;';
+                card.innerHTML = `
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                            <strong style="color: #fff; font-size: 0.88rem;">${cam.name}</strong>
+                            <span style="background: rgba(0,255,136,0.15); color: #00ff88; font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">${cam.tag || 'EN VIVO'}</span>
+                        </div>
+                        <div style="font-size: 0.76rem; color: #8a99b5; margin-bottom: 4px;">📍 ${cam.location} • ${cam.desc}</div>
+                        <div style="font-size: 0.72rem; color: #00f2fe; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cam.url}</div>
+                    </div>
+                    <button class="btn btn-sm btn-primary" onclick="connectPublicCam('${cam.id}')" style="white-space: nowrap; padding: 8px 14px;">
+                        <span>⚡ Conectar</span>
+                    </button>
+                `;
+                publicCamsContainer.appendChild(card);
+            });
+        } catch (e) {
+            console.error("Error cargando cámaras públicas:", e);
+        }
+    }
+
+    window.connectPublicCam = async function(pubId) {
+        try {
+            speakText("Conectando a cámara pública de internet.");
+            const res = await fetch('/api/public_cameras/connect/' + pubId, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                modalIpCam.classList.remove('active');
+                await loadCameras();
+                if (cameraSelect) cameraSelect.value = data.camera_id;
+                activeCamTitle.textContent = `TRANSMISIÓN EN TIEMPO REAL (${data.name.toUpperCase()})`;
+                setTimeout(() => { videoFeed.src = "/video_feed?t=" + Date.now(); }, 250);
+                speakText("Cámara pública conectada exitosamente. Inteligencia artificial analizando en vivo.");
+            } else {
+                alert("No se pudo conectar a la cámara pública: " + (data.message || 'Error de conexión'));
+            }
+        } catch (e) {
+            alert("Error al conectar con la cámara pública.");
+        }
+    };
+
+    async function loadSavedIpCameras() {
+        if (!savedIpCamsList) return;
+        try {
+            const res = await fetch('/api/ip_cameras');
+            if (!res.ok) return;
+            const list = await res.json();
+            if (list.length === 0) {
+                savedIpCamsList.innerHTML = '<span style="font-size: 0.8rem; color: #64748b;">No hay cámaras de seguridad agregadas aún.</span>';
+                return;
+            }
+            savedIpCamsList.innerHTML = '';
+            list.forEach(cam => {
+                const item = document.createElement('div');
+                item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.04); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);';
+                item.innerHTML = `
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 360px;">
+                        <strong style="color: #fff; font-size: 0.86rem;">${cam.display_name}</strong>
+                        <div style="font-size: 0.75rem; color: #00ff88; font-family: monospace; overflow: hidden; text-overflow: ellipsis;">${cam.url}</div>
+                    </div>
+                    <div style="display: flex; gap: 6px;">
+                        <button class="btn btn-sm btn-primary" onclick="switchToIpCam('${cam.id}')" title="Ver en vivo">👁️ Ver</button>
+                        <button class="btn btn-sm btn-outline" onclick="deleteIpCam('${cam.id}')" style="border-color: #ff0055; color: #ff0055;" title="Eliminar">🗑️</button>
+                    </div>
+                `;
+                savedIpCamsList.appendChild(item);
+            });
+        } catch (err) {
+            console.error("Error cargando cámaras IP guardadas:", err);
+        }
+    }
+
+    window.switchToIpCam = async function(camId) {
+        try {
+            const res = await fetch('/api/cameras/switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ camera_id: camId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                modalIpCam.classList.remove('active');
+                if (cameraSelect) cameraSelect.value = camId;
+                activeCamTitle.textContent = `TRANSMISIÓN EN TIEMPO REAL (CÁMARA DE SEGURIDAD)`;
+                setTimeout(() => { videoFeed.src = "/video_feed?t=" + Date.now(); }, 200);
+                speakText("Conectado a cámara de seguridad real.");
+            } else {
+                alert("Error al conectar: " + (data.message || 'No se pudo abrir la cámara.'));
+            }
+        } catch (e) {
+            alert("Error cambiando a cámara de seguridad.");
+        }
+    };
+
+    window.deleteIpCam = async function(camId) {
+        if (!confirm("¿Eliminar esta cámara de seguridad del sistema?")) return;
+        try {
+            const res = await fetch('/api/ip_cameras/' + camId, { method: 'DELETE' });
+            if (res.ok) {
+                await loadSavedIpCameras();
+                await loadCameras();
+            }
+        } catch (e) {
+            alert("Error al eliminar la cámara.");
+        }
+    };
+
+    if (btnTestIpCam) {
+        btnTestIpCam.addEventListener('click', async () => {
+            const url = ipCamUrl.value.trim();
+            if (!url) {
+                showIpCamFeedback("Por favor escribe la URL RTSP o IP de la cámara.", false);
+                return;
+            }
+            showIpCamFeedback("⏳ Probando conexión con la cámara de seguridad (puede tardar unos segundos)...", null);
+            btnTestIpCam.disabled = true;
+            try {
+                const res = await fetch('/api/ip_cameras/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                const data = await res.json();
+                showIpCamFeedback(data.message, data.success);
+            } catch (err) {
+                showIpCamFeedback("Error al contactar con el servidor.", false);
+            } finally {
+                btnTestIpCam.disabled = false;
+            }
+        });
+    }
+
+    if (btnSaveIpCam) {
+        btnSaveIpCam.addEventListener('click', async () => {
+            const name = ipCamName.value.trim();
+            const url = ipCamUrl.value.trim();
+            if (!url) {
+                showIpCamFeedback("Por favor escribe la URL RTSP o IP de la cámara.", false);
+                return;
+            }
+            btnSaveIpCam.disabled = true;
+            try {
+                const res = await fetch('/api/ip_cameras/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name || 'Cámara de Seguridad', url })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showIpCamFeedback("✔️ Cámara guardada exitosamente.", true);
+                    ipCamName.value = '';
+                    ipCamUrl.value = '';
+                    await loadSavedIpCameras();
+                    await loadCameras();
+                    if (data.camera?.id) {
+                        window.switchToIpCam(data.camera.id);
+                    }
+                } else {
+                    showIpCamFeedback(data.message || "Error guardando cámara.", false);
+                }
+            } catch (err) {
+                showIpCamFeedback("Error en la solicitud al servidor.", false);
+            } finally {
+                btnSaveIpCam.disabled = false;
+            }
+        });
+    }
+
+    function showIpCamFeedback(msg, isSuccess) {
+        if (!ipCamFeedback) return;
+        ipCamFeedback.style.display = 'block';
+        ipCamFeedback.textContent = msg;
+        if (isSuccess === true) {
+            ipCamFeedback.style.background = 'rgba(0, 255, 136, 0.15)';
+            ipCamFeedback.style.border = '1px solid #00ff88';
+            ipCamFeedback.style.color = '#00ff88';
+        } else if (isSuccess === false) {
+            ipCamFeedback.style.background = 'rgba(255, 0, 85, 0.15)';
+            ipCamFeedback.style.border = '1px solid #ff0055';
+            ipCamFeedback.style.color = '#ff6b8b';
+        } else {
+            ipCamFeedback.style.background = 'rgba(0, 242, 254, 0.15)';
+            ipCamFeedback.style.border = '1px solid #00f2fe';
+            ipCamFeedback.style.color = '#00f2fe';
+        }
+    }
 
     // Intervalos y Carga Inicial
     setInterval(fetchStats, 1500);

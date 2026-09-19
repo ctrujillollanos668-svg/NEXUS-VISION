@@ -105,12 +105,13 @@ class RemoteStreamManager:
             from app.database.database import SessionLocal
             from app.database.models import EventLog
 
+            cam_folder = f"camara_amigo_{stream_id.replace('remote_disp_', '').replace('remote_', '')}"
             snapshots_dir = Path(__file__).resolve().parent.parent.parent / "storage" / "snapshots"
             now = datetime.now()
-            date_folder = snapshots_dir / now.strftime("%Y") / now.strftime("%m") / now.strftime("%d")
+            date_folder = snapshots_dir / cam_folder / now.strftime("%Y-%m-%d")
             date_folder.mkdir(parents=True, exist_ok=True)
 
-            filename = f"remoto_movimiento_{now.strftime('%H%M%S_%f')[:10]}.jpg"
+            filename = f"movimiento_{now.strftime('%H%M%S_%f')[:10]}.jpg"
             filepath = date_folder / filename
 
             cv2.imwrite(str(filepath), frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
@@ -120,10 +121,10 @@ class RemoteStreamManager:
                 pct = int(min(1.0, motion_ratio * 4) * 100)
                 event = EventLog(
                     event_type="MOTION_DETECTED",
-                    object_name=f"Movimiento ({pct}%)",
+                    object_name=f"Movimiento ({pct}%) [{display_name}]",
                     confidence=round(min(1.0, motion_ratio * 4), 2),
                     camera_id=0,
-                    zone_name="Acceso Remoto",
+                    zone_name=f"🌐 {display_name}",
                     alert_level="WARNING",
                     description=f"Movimiento detectado automáticamente en la cámara de {display_name}",
                     snapshot_path=str(filepath),
@@ -132,7 +133,7 @@ class RemoteStreamManager:
                 db.add(event)
                 db.commit()
                 db.refresh(event)
-                print(f"📸 [MOVIMIENTO DETECTADO #{event.id}] Foto automática guardada de {display_name} en: {filepath.name}")
+                print(f"📸 [MOVIMIENTO DETECTADO #{event.id}] Foto guardada en '{cam_folder}': {filepath.name}")
             except Exception as e:
                 db.rollback()
                 print(f"❌ Error guardando evento de movimiento en BD: {e}")

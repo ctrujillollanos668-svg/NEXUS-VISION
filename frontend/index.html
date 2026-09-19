@@ -56,6 +56,9 @@
                         <button class="btn btn-sm btn-outline" id="btnScanCams" title="Escanear Cámaras Conectadas">
                             <span>🔍 Escanear</span>
                         </button>
+                        <button class="btn btn-sm btn-primary" id="btnAddIpCam" title="Conectar Cámara de Seguridad Real (IP / RTSP)" style="white-space: nowrap;">
+                            <span>➕ Cámara IP / RTSP</span>
+                        </button>
                     </div>
                     <div class="stream-stats">
                         <span class="stat-pill"><strong id="fpsVal">0.0</strong> FPS</span>
@@ -211,10 +214,89 @@
 
     <!-- Modal para ver capturas en grande -->
     <div class="modal" id="imageModal">
-        <div class="modal-content">
+        <div class="modal-content" style="position: relative;">
             <span class="modal-close" id="modalClose">&times;</span>
             <img id="modalImage" src="" alt="Captura de Seguridad">
-            <div class="modal-info" id="modalInfo"></div>
+            <div style="padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); flex-wrap: wrap; gap: 10px;">
+                <div class="modal-info" id="modalInfo" style="padding: 0; flex: 1;"></div>
+                <button class="btn btn-sm btn-outline" id="btnDeleteModalImage" style="border-color: #ff0055; color: #ff0055; padding: 8px 16px;">
+                    <span>🗑️ Eliminar esta Foto</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Configurar Cámara de Seguridad Real (IP / RTSP / Públicas) -->
+    <div class="modal" id="modalIpCam">
+        <div class="modal-content" style="max-width: 640px; padding: 24px; position: relative;">
+            <span class="modal-close" id="btnCloseIpCamModal">&times;</span>
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                <span style="font-size: 1.8rem;">🛡️</span>
+                <div>
+                    <h3 style="color: #fff; font-size: 1.15rem; font-weight: 700;">Cámaras de Seguridad y Vigilancia en Tiempo Real</h3>
+                    <p style="font-size: 0.8rem; color: #8e9bb0;">Conecta cámaras públicas abiertas en internet o cámaras de seguridad privadas (RTSP/IP).</p>
+                </div>
+            </div>
+
+            <!-- Selector de Pestañas -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+                <button id="tabBtnPublicCams" class="btn btn-sm btn-primary" style="flex: 1; justify-content: center;">
+                    <span>🌍 Cámaras Públicas Abiertas (Demostración)</span>
+                </button>
+                <button id="tabBtnCustomCam" class="btn btn-sm btn-outline" style="flex: 1; justify-content: center;">
+                    <span>➕ Tu Cámara Privada (IP/RTSP)</span>
+                </button>
+            </div>
+
+            <!-- Pestaña 1: Cámaras Públicas de Internet -->
+            <div id="tabContentPublicCams" style="display: flex; flex-direction: column; gap: 10px;">
+                <p style="font-size: 0.82rem; color: #8a99b5; margin-bottom: 4px;">
+                    Cámaras IP públicas de acceso abierto en internet (vía pública, instalaciones y tráfico) para pruebas de visión artificial e IA con tu instructor:
+                </p>
+                <div id="publicCamsContainer" style="display: flex; flex-direction: column; gap: 8px; max-height: 290px; overflow-y: auto; padding-right: 4px;">
+                    <div class="empty-state" style="font-size: 0.85rem;">Cargando cámaras públicas...</div>
+                </div>
+            </div>
+
+            <!-- Pestaña 2: Agregar Cámara Privada Personal -->
+            <div id="tabContentCustomCam" style="display: none; flex-direction: column; gap: 14px;">
+                <div>
+                    <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #c4d1e2; margin-bottom: 6px;">Nombre de la Cámara:</label>
+                    <input type="text" id="ipCamName" placeholder="Ej: Entrada Principal, Patio, Portón" style="width: 100%; padding: 10px 14px; background: rgba(10, 15, 26, 0.85); border: 1px solid rgba(0, 242, 254, 0.25); border-radius: 8px; color: #fff; font-size: 0.9rem;">
+                </div>
+
+                <div>
+                    <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #c4d1e2; margin-bottom: 6px;">URL RTSP o Dirección de Video:</label>
+                    <input type="text" id="ipCamUrl" placeholder="rtsp://admin:clave@192.168.1.100:554/stream1" style="width: 100%; padding: 10px 14px; background: rgba(10, 15, 26, 0.85); border: 1px solid rgba(0, 242, 254, 0.25); border-radius: 8px; color: #00ff88; font-family: monospace; font-size: 0.85rem;">
+                    <div style="margin-top: 6px; font-size: 0.74rem; color: #8a99b5; line-height: 1.4;">
+                        💡 <strong>Ejemplos comunes:</strong><br>
+                        • <strong>TP-Link Tapo:</strong> <code>rtsp://usuario:password@192.168.1.50:554/stream1</code><br>
+                        • <strong>Hikvision / Ezviz:</strong> <code>rtsp://admin:password@192.168.1.50:554/Streaming/Channels/101</code><br>
+                        • <strong>Dahua / Imou:</strong> <code>rtsp://admin:password@192.168.1.50:554/cam/realmonitor?channel=1&subtype=0</code>
+                    </div>
+                </div>
+
+                <div id="ipCamFeedback" style="display: none; padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 500;"></div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
+                    <button class="btn btn-outline" id="btnTestIpCam" style="padding: 8px 16px;">
+                        <span>🔍 Probar Señal</span>
+                    </button>
+                    <button class="btn btn-primary" id="btnSaveIpCam" style="padding: 8px 18px;">
+                        <span>💾 Guardar Cámara</span>
+                    </button>
+                </div>
+
+                <!-- Lista de Cámaras Guardadas -->
+                <div style="margin-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 12px;">
+                    <div style="font-size: 0.8rem; font-weight: 700; color: #00f2fe; text-transform: uppercase; margin-bottom: 8px;">
+                        📹 Cámaras de Seguridad Registradas
+                    </div>
+                    <div id="savedIpCamsList" style="display: flex; flex-direction: column; gap: 8px; max-height: 150px; overflow-y: auto;">
+                        <span style="font-size: 0.8rem; color: #64748b;">Cargando cámaras...</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

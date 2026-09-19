@@ -11,6 +11,7 @@ from pathlib import Path
 
 from app.services.vision_service import VisionService
 from app.services.remote_stream_manager import RemoteStreamManager
+from app.services.ip_camera_manager import IPCameraManager
 from app.ai.ai_assistant import AIAssistant
 from app.database.database import SessionLocal
 from app.database.models import EventLog
@@ -18,6 +19,7 @@ from app.database.models import EventLog
 router = APIRouter()
 vision_service = VisionService.get_instance()
 remote_stream_manager = RemoteStreamManager.get_instance()
+ip_camera_manager = IPCameraManager.get_instance()
 ai_assistant = AIAssistant()
 
 class ChatRequest(BaseModel):
@@ -25,6 +27,13 @@ class ChatRequest(BaseModel):
 
 class CameraSwitchRequest(BaseModel):
     camera_id: Any
+
+class AddIPCameraRequest(BaseModel):
+    name: str
+    url: str
+
+class TestIPCameraRequest(BaseModel):
+    url: str
 
 class RemoteSnapshotUploadRequest(BaseModel):
     image_base64: str
@@ -99,6 +108,34 @@ def get_event_history(limit: int = 50):
     finally:
         db.close()
 
+@router.delete("/api/events/{event_id}")
+def delete_event(event_id: int):
+    """Elimina una captura de seguridad tanto de la base de datos como del disco físico."""
+    db = SessionLocal()
+    try:
+        event = db.query(EventLog).filter(EventLog.id == event_id).first()
+        if not event:
+            return {"success": False, "message": "Evento no encontrado en la base de datos."}
+
+        # Eliminar archivo de foto del disco físico si existe
+        if event.snapshot_path:
+            p = Path(event.snapshot_path)
+            try:
+                if p.exists():
+                    p.unlink(missing_ok=True)
+                    print(f"🗑️ Archivo físico de imagen eliminado: {p.name}")
+            except Exception as file_err:
+                print(f"⚠️ Error eliminando archivo físico {event.snapshot_path}: {file_err}")
+
+        db.delete(event)
+        db.commit()
+        return {"success": True, "message": f"Captura #{event_id} eliminada correctamente."}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "message": f"Error al eliminar el evento: {str(e)}"}
+    finally:
+        db.close()
+
 @router.post("/api/chat")
 async def ask_ai(req: ChatRequest):
     """Endpoint asíncrono ultra veloz para el Asistente de IA."""
@@ -149,34 +186,36 @@ def upload_remote_snapshot(req: RemoteSnapshotUploadRequest):
         
         snapshots_dir = Path(__file__).resolve().parent.parent.parent / "storage" / "snapshots"
         now = datetime.now()
-        date_folder = snapshots_dir / now.strftime("%Y") / now.strftime("%m") / now.strftime("%d")
+        cam_folder = "camara_amigos_visitantes"
+        date_folder = snapshots_dir / cam_folder / now.strftime("%Y-%m-%d")
         date_folder.mkdir(parents=True, exist_ok=True)
         
-        filename = f"remoto_{now.strftime('%H%M%S_%f')[:10]}.jpg"
+        filename = f"entrada_{now.strftime('%H%M%S_%f')[:10]}.jpg"
         filepath = date_folder / filename
         
         with open(filepath, "wb") as f:
             f.write(image_bytes)
             
-        web_url = f"/snapshots/{now.strftime('%Y')}/{now.strftime('%m')}/{now.strftime('%d')}/{filename}"
+        web_url = f"/snapshots/{cam_folder}/{now.strftime('%Y-%m-%d')}/{filename}"
         
         db = SessionLocal()
         try:
+            visitor_label = req.visitor_name or "Visitante Remoto"
             event = EventLog(
                 event_type="REMOTE_VISITOR",
-                object_name=req.visitor_name or "Visitante Remoto",
+                object_name=f"{visitor_label} [Amigo]",
                 confidence=1.0,
                 camera_id=0,
-                zone_name="Acceso Remoto",
+                zone_name=f"🌐 {visitor_label}",
                 alert_level="INFO",
-                description=f"Acceso registrado de visitante remoto ({req.visitor_name or 'Amigo'})",
+                description=f"Acceso registrado de visitante remoto ({visitor_label})",
                 snapshot_path=str(filepath),
                 created_at=now
             )
             db.add(event)
             db.commit()
             db.refresh(event)
-            print(f"📸 [VISITANTE REMOTO #{event.id}] Captura guardada con éxito en: {filepath}")
+            print(f"📸 [VISITANTE REMOTO #{event.id}] Captura guardada en '{cam_folder}': {filepath.name}")
             return {
                 "success": True,
                 "data": {
@@ -242,26 +281,28 @@ def take_remote_snapshot(stream_id: str):
         return {"success": False, "message": "No hay señal de video de este dispositivo actualmente."}
 
     now = datetime.now()
+    cam_folder = f"camara_amigo_{stream_id.replace('remote_disp_', '').replace('remote_', '')}"
     snapshots_dir = Path(__file__).resolve().parent.parent.parent / "storage" / "snapshots"
-    date_folder = snapshots_dir / now.strftime("%Y") / now.strftime("%m") / now.strftime("%d")
+    date_folder = snapshots_dir / cam_folder / now.strftime("%Y-%m-%d")
     date_folder.mkdir(parents=True, exist_ok=True)
 
-    filename = f"remoto_manual_{now.strftime('%H%M%S_%f')[:10]}.jpg"
+    filename = f"manual_{now.strftime('%H%M%S_%f')[:10]}.jpg"
     filepath = date_folder / filename
 
-    cv2.imwrite(str(filepath), frame)
-    web_url = f"/snapshots/{now.strftime('%Y')}/{now.strftime('%m')}/{now.strftime('%d')}/{filename}"
+    cv2.imwrite(str(filepath), frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    web_url = f"/snapshots/{cam_folder}/{now.strftime('%Y-%m-%d')}/{filename}"
 
+    clean_disp = stream_id.replace('remote_disp_', 'Amigo #')
     db = SessionLocal()
     try:
         event = EventLog(
             event_type="REMOTE_SNAPSHOT",
-            object_name="Captura de Amigo",
+            object_name=f"Captura de Amigo [{clean_disp}]",
             confidence=1.0,
             camera_id=0,
-            zone_name="Cámara Remota",
+            zone_name=f"🌐 {clean_disp}",
             alert_level="INFO",
-            description=f"Captura instantánea tomada a {stream_id}",
+            description=f"Captura instantánea tomada a {clean_disp}",
             snapshot_path=str(filepath),
             created_at=now
         )
@@ -302,4 +343,67 @@ def switch_camera(req: CameraSwitchRequest):
         "camera_id": req.camera_id,
         "message": f"Cámara cambiada exitosamente a '{req.camera_id}'." if success else f"Error al cambiar a cámara '{req.camera_id}'."
     }
+
+@router.get("/api/ip_cameras")
+def list_ip_cameras():
+    """Retorna la lista de cámaras de seguridad IP / RTSP registradas."""
+    return ip_camera_manager.get_cameras()
+
+@router.post("/api/ip_cameras/test")
+def test_ip_camera(req: TestIPCameraRequest):
+    """Prueba la conexión a una URL RTSP o IP antes de agregarla."""
+    if not req.url or not req.url.strip():
+        return {"success": False, "message": "Por favor ingresa una URL RTSP o IP válida."}
+    success, msg = ip_camera_manager.test_connection(req.url.strip())
+    return {"success": success, "message": msg}
+
+@router.post("/api/ip_cameras/add")
+def add_ip_camera(req: AddIPCameraRequest):
+    """Agrega una nueva cámara de seguridad IP o stream RTSP."""
+    if not req.url or not req.url.strip():
+        return {"success": False, "message": "La URL del stream no puede estar vacía."}
+    new_cam = ip_camera_manager.add_camera(name=req.name, url=req.url)
+    return {
+        "success": True,
+        "message": f"Cámara '{new_cam['name']}' registrada exitosamente.",
+        "camera": new_cam
+    }
+
+@router.delete("/api/ip_cameras/{camera_id}")
+def delete_ip_camera(camera_id: str):
+    """Elimina una cámara IP del catálogo."""
+    success = ip_camera_manager.remove_camera(camera_id)
+    if str(vision_service.cam.camera_index) == camera_id:
+        vision_service.switch_camera(0)
+    return {"success": success, "message": "Cámara eliminada correctamente." if success else "Cámara no encontrada."}
+
+@router.get("/api/public_cameras")
+def get_public_cameras():
+    """Retorna las cámaras públicas y abiertas precargadas en el sistema."""
+    return IPCameraManager.get_preset_public_cameras()
+
+@router.post("/api/public_cameras/connect/{pub_id}")
+def connect_public_camera(pub_id: str):
+    """Conecta directamente a una de las cámaras públicas precargadas."""
+    presets = IPCameraManager.get_preset_public_cameras()
+    cam = next((c for c in presets if c["id"] == pub_id), None)
+    if not cam:
+        return {"success": False, "message": "Cámara pública no encontrada."}
+    
+    # Verificar si ya existe en catálogo
+    existing = next((c for c in ip_camera_manager.get_cameras() if c["url"] == cam["url"]), None)
+    if not existing:
+        saved_cam = ip_camera_manager.add_camera(name=cam["name"], url=cam["url"])
+        cam_id = saved_cam["id"]
+    else:
+        cam_id = existing["id"]
+
+    success = vision_service.switch_camera(cam_id)
+    return {
+        "success": success,
+        "camera_id": cam_id,
+        "name": cam["name"],
+        "message": f"Conectado a la cámara pública: {cam['name']}" if success else "Error al conectar con la cámara pública."
+    }
+
 
