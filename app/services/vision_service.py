@@ -131,7 +131,8 @@ class VisionService:
                 self.current_inference_ms = self.detector.last_inference_ms
                 self.total_detections_session += len(detections)
 
-            time.sleep(0.005)
+            # Pequeña pausa para no saturar el 100% de los núcleos de la CPU
+            time.sleep(0.035)
 
     def _render_stream_loop(self):
         """Bucle de renderizado táctico y streaming web a 30 FPS constantes."""

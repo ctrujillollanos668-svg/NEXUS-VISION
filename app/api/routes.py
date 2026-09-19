@@ -24,13 +24,15 @@ class CameraSwitchRequest(BaseModel):
     camera_id: Any
 
 def generate_video_stream() -> Generator[bytes, None, None]:
-    """Generador de streaming MJPEG para navegadores web."""
+    """Generador de streaming MJPEG de alta fluidez para navegadores web."""
+    last_frame_bytes = None
     while True:
         frame_bytes = vision_service.get_latest_jpeg()
-        if frame_bytes is not None:
+        if frame_bytes is not None and frame_bytes is not last_frame_bytes:
+            last_frame_bytes = frame_bytes
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        time.sleep(0.03)
+        time.sleep(0.012)
 
 @router.get("/video_feed")
 def video_feed():

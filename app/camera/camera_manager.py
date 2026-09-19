@@ -57,11 +57,19 @@ class CameraManager:
             self.is_running = False
             return False
 
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        # Configuración de alta velocidad para eliminar lag en Windows
+        try:
+            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        except Exception:
+            pass
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.cap.set(cv2.CAP_PROP_FPS, 30)
+        
         self.is_running = True
         self.prev_time = time.time()
-        print(f"✔️ Fuente de video {self.camera_index} lista y capturando.")
+        print(f"✔️ Fuente de video {self.camera_index} optimizada a 640x480 (Buffer=1, MJPG).")
         return True
 
     def switch_source(self, new_source: Union[int, str]) -> bool:
