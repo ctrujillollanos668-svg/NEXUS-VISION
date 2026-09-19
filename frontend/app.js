@@ -116,6 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 3. Síntesis de Voz
+    let currentUtterance = null;
     function speakText(text) {
         if (!voiceOutputEnabled || !('speechSynthesis' in window)) return;
 
@@ -133,17 +134,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!clean) return;
 
-        const utterance = new SpeechSynthesisUtterance(clean);
-        utterance.lang = 'es-ES';
-        utterance.rate = 1.08;
+        currentUtterance = new SpeechSynthesisUtterance(clean);
+        currentUtterance.lang = 'es-ES';
+        currentUtterance.rate = 1.05;
 
         const voices = window.speechSynthesis.getVoices();
         const esVoice = voices.find(v => v.lang.startsWith('es') || v.lang.includes('es-'));
         if (esVoice) {
-            utterance.voice = esVoice;
+            currentUtterance.voice = esVoice;
         }
 
-        window.speechSynthesis.speak(utterance);
+        currentUtterance.onend = () => {
+            currentUtterance = null;
+        };
+
+        window.speechSynthesis.speak(currentUtterance);
     }
 
     btnToggleVoiceTTS.addEventListener('click', () => {

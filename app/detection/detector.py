@@ -149,12 +149,14 @@ class ObjectDetector:
         """
         t_start = time.perf_counter()
 
+        # Inferencia optimizada con resolución balanceada (480px) para máxima velocidad en CPU
         results = self.model(
             frame,
             conf=self.conf_threshold,
             iou=self.iou_threshold,
             agnostic_nms=False,
             device=self.device,
+            imgsz=480,
             verbose=False
         )[0]
 

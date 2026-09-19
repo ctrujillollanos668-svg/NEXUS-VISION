@@ -34,9 +34,9 @@ class AIAssistant:
         if HAS_GENAI and api_key and api_key != "":
             try:
                 genai.configure(api_key=api_key)
-                # Configuración de generación optimizada para velocidad
+                # Configuración de generación optimizada para velocidad y completitud
                 gen_config = genai.types.GenerationConfig(
-                    max_output_tokens=180,
+                    max_output_tokens=400,
                     temperature=0.7
                 )
                 self.gemini_model = genai.GenerativeModel(
@@ -63,21 +63,22 @@ class AIAssistant:
     async def _ask_gemini_async(self, query: str, scene_context: Dict[str, Any], frame_bytes: Optional[bytes]) -> str:
         """Consulta asíncrona ultra rápida a Google Gemini con imagen comprimida."""
         try:
-            inventory_str = ", ".join([f"{k} ({v})" for k, v in scene_context.get("inventory", {}).items()]) or "Ninguno"
+            inventory_str = ", ".join([f"{k} ({v})" for k, v in scene_context.get("inventory", {}).items()]) or "Sin objetos en movimiento"
             motion_str = f"{scene_context.get('scene_motion', 0.0):.1f}%"
             
             system_prompt = (
-                f"Eres Nexus AI, asistente de seguridad y visión artificial de NEXUS VISION.\n"
-                f"Estás viendo la cámara en vivo. Objetos detectados: [{inventory_str}], Movimiento: {motion_str}.\n"
+                f"Eres Nexus AI, el asistente inteligente de visión artificial y seguridad de NEXUS VISION.\n"
+                f"Estás analizando la transmisión de la cámara en vivo. Contexto de telemetría: [{inventory_str}], Nivel de movimiento: {motion_str}.\n"
                 f"Instrucciones:\n"
-                f"1. Responde en español de forma natural, amigable, concisa (1 o 2 oraciones máximo) y directa.\n"
-                f"2. Observa la imagen para detalles visuales (colores, gestos, objetos, personas, ropa).\n\n"
-                f"Pregunta: {query}"
+                f"1. Responde siempre en español con frases completas, claras, fluidas y amigables.\n"
+                f"2. Si el usuario pregunta qué ves o qué hay, describe detalladamente los objetos, la persona, lo que tiene en las manos, gestos, colores y el entorno visible en la imagen.\n"
+                f"3. No dejes respuestas a medias ni cortes la frase.\n\n"
+                f"Pregunta del usuario: {query}"
             )
 
             contents = [system_prompt]
 
-            # Optimización de Imagen: Redimensionar a max 512px para subida ultrarrápida (20KB en lugar de 300KB)
+            # Optimización de Imagen: Redimensionar a max 512px para subida ultrarrápida
             if frame_bytes:
                 try:
                     pil_img = Image.open(io.BytesIO(frame_bytes))
@@ -86,25 +87,27 @@ class AIAssistant:
                 except Exception:
                     pass
 
-            # Llamada asíncrona no bloqueante
             response = await self.gemini_model.generate_content_async(contents)
-            return response.text.strip()
+            text_result = response.text.strip() if response and response.text else ""
+            if text_result:
+                return text_result
+            return self._ask_local(query, scene_context)
 
         except Exception as e:
             print(f"⚠️ Error llamando a Gemini API: {e}")
             return self._ask_local(query, scene_context)
 
     def _ask_local(self, query: str, ctx: Dict[str, Any]) -> str:
-        """Motor conversacional local de contingencia."""
+        """Motor conversacional local de contingencia con comprensión robusta."""
         q = query.lower().strip()
         inventory = ctx.get("inventory", {})
         motion = ctx.get("scene_motion", 0.0)
 
-        if any(w in q for w in ["viendo", "ves", "hay", "escena", "frente", "ahora", "que tengo", "que hay", "mira"]):
+        if any(w in q for w in ["viendo", "ves", "hay", "escena", "frente", "ahora", "que tengo", "que hay", "mira", "mirmado", "mirando", "dime"]):
             if not inventory:
-                return "Actualmente la cámara no detecta ningún objeto en movimiento en el plano visual."
+                return f"En este momento la cámara está activa con {motion:.1f}% de movimiento, pero no detecto objetos nuevos en movimiento en el plano."
             items_desc = [f"{qty} {name}" for name, qty in inventory.items()]
-            return f"👁️ **En este momento observo:** {', '.join(items_desc)} (Movimiento: **{motion:.1f}%**)."
+            return f"👁️ En este momento observo en la cámara: {', '.join(items_desc)}, con un nivel de movimiento de la sala del {motion:.1f}%."
 
         elif any(w in q for w in ["alerta", "intrusion", "restringida", "peligro"]):
             return self._query_alerts_history()
@@ -116,10 +119,13 @@ class AIAssistant:
             return self._generate_security_report(ctx)
 
         elif any(w in q for w in ["hola", "buenas", "que tal", "quien eres"]):
-            return "¡Hola! Soy **Nexus AI**, tu asistente inteligente de seguridad y visión artificial. ¿En qué te ayudo?"
+            return "¡Hola! Soy Nexus AI, tu asistente inteligente de seguridad y visión artificial. ¿En qué te puedo colaborar hoy?"
 
         else:
-            return f"Te escucho. Actualmente el sistema tiene **{ctx.get('total_items_in_scene', 0)} objetos detectados** con **{motion:.1f}% de movimiento**."
+            if inventory:
+                items_desc = [f"{qty} {name}" for name, qty in inventory.items()]
+                return f"Te escucho. En la escena detecto {', '.join(items_desc)} con {motion:.1f}% de movimiento en sala."
+            return f"Te escucho. El sistema se encuentra en línea y vigilando activamente a {ctx.get('fps', 0)} FPS."
 
     def _query_alerts_history(self) -> str:
         db = SessionLocal()
