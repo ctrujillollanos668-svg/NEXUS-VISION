@@ -63,7 +63,8 @@ class AlertManager:
         date_folder = self.snapshots_dir / now.strftime("%Y") / now.strftime("%m") / now.strftime("%d")
         date_folder.mkdir(parents=True, exist_ok=True)
 
-        filename = f"alerta_{object_name.lower()}_{now.strftime('%H%M%S_%f')[:10]}.jpg"
+        clean_name = object_name.lower().replace(' ', '_').replace('/', '_')
+        filename = f"alerta_{clean_name}_{now.strftime('%H%M%S_%f')[:10]}.jpg"
         filepath = date_folder / filename
 
         cv2.imwrite(str(filepath), frame)

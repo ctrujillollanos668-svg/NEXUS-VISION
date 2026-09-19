@@ -57,10 +57,11 @@ def get_event_history(limit: int = 30):
             if e.snapshot_path:
                 p = Path(e.snapshot_path)
                 try:
-                    parts = p.parts
-                    if "snapshots" in parts:
-                        idx = parts.index("snapshots")
-                        web_snapshot_url = "/snapshots/" + "/".join(parts[idx+1:])
+                    if p.exists():
+                        parts = p.parts
+                        if "snapshots" in parts:
+                            idx = parts.index("snapshots")
+                            web_snapshot_url = "/snapshots/" + "/".join(parts[idx+1:])
                 except Exception:
                     web_snapshot_url = None
 
