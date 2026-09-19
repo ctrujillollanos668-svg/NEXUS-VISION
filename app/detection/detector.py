@@ -1,6 +1,6 @@
 """
-Módulo de Detección de Objetos con IA para NEXUS VISION.
-Optimizado para detección de objetos sostenidos en mano y solapados dentro del cuerpo de personas.
+Módulo de Detección de Objetos Universal (Vocabulario Abierto) para NEXUS VISION.
+Utiliza YOLO-World para reconocer cualquier objeto cotidiano (lapiceros, cuadernos, llaves, gafas, etc.).
 """
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
@@ -17,102 +17,76 @@ class Detection:
     confidence: float
     bbox: Tuple[int, int, int, int]  # (x1, y1, x2, y2)
     center: Tuple[int, int]          # (center_x, center_y)
-    area: int                        # Área en píxeles para ordenar capas
+    area: int                        # Área para dibujo en capas
 
 class ObjectDetector:
-    """Motor de inferencia y traducción de Visión Artificial."""
+    """Motor de inferencia universal con YOLO-World."""
 
-    COCO_SPANISH_MAP: Dict[str, str] = {
-        "person": "Persona",
-        "bicycle": "Bicicleta",
-        "car": "Auto",
-        "motorcycle": "Motocicleta",
-        "airplane": "Avion",
-        "bus": "Autobus",
-        "train": "Tren",
-        "truck": "Camion",
-        "boat": "Barco",
-        "traffic light": "Semaforo",
-        "fire hydrant": "Hidrante",
-        "stop sign": "Senal Stop",
-        "parking meter": "Parquimetro",
-        "bench": "Banco",
-        "bird": "Ave",
-        "cat": "Gato",
-        "dog": "Perro",
-        "horse": "Caballo",
-        "sheep": "Oveja",
-        "cow": "Vaca",
-        "elephant": "Elefante",
-        "bear": "Oso",
-        "zebra": "Cebra",
-        "giraffe": "Jirafa",
-        "backpack": "Mochila",
-        "umbrella": "Paraguas",
-        "handbag": "Bolso",
-        "tie": "Corbata",
-        "suitcase": "Maleta",
-        "frisbee": "Frisbee",
-        "skis": "Esquis",
-        "snowboard": "Snowboard",
-        "sports ball": "Pelota",
-        "kite": "Cometa",
-        "baseball bat": "Bate",
-        "baseball glove": "Guante",
-        "skateboard": "Patineta",
-        "surfboard": "Tabla Surf",
-        "tennis racket": "Raqueta",
-        "bottle": "Botella",
-        "wine glass": "Copa",
-        "cup": "Taza / Vaso",
-        "fork": "Tenedor",
-        "knife": "Cuchillo",
-        "spoon": "Cuchara",
-        "bowl": "Plato / Tazon",
-        "banana": "Platano",
-        "apple": "Manzana",
-        "sandwich": "Sandwich",
-        "orange": "Naranja",
-        "broccoli": "Brocoli",
-        "carrot": "Zanahoria",
-        "hot dog": "Perro Caliente",
-        "pizza": "Pizza",
-        "donut": "Dona",
-        "cake": "Pastel",
-        "chair": "Silla",
-        "couch": "Sofa",
-        "potted plant": "Planta",
-        "bed": "Cama",
-        "dining table": "Mesa",
-        "toilet": "Inodoro",
-        "tv": "Pantalla / TV",
-        "laptop": "Computador / Laptop",
-        "mouse": "Mouse / Raton",
-        "remote": "Control Remoto",
-        "keyboard": "Teclado",
-        "cell phone": "Celular",
-        "microwave": "Microondas",
-        "oven": "Horno",
-        "toaster": "Tostadora",
-        "sink": "Fregadero",
-        "refrigerator": "Nevera",
-        "book": "Libro / Cuaderno",
-        "clock": "Reloj",
-        "vase": "Florero",
-        "scissors": "Tijeras",
-        "teddy bear": "Peluche",
-        "hair drier": "Secador",
-        "toothbrush": "Cepillo de Dientes"
-    }
+    # Catálogo de objetos cotidianos con su traducción y categoría
+    ITEMS_CATALOG: List[Tuple[str, str, str]] = [
+        # Humanos y accesorios
+        ("person", "Persona", "person"),
+        ("glasses", "Gafas", "item"),
+        ("sunglasses", "Gafas de Sol", "item"),
+        ("watch", "Reloj", "device"),
+        ("wristwatch", "Reloj de Mano", "device"),
+        ("cap", "Gorra", "item"),
+        ("hat", "Sombrero", "item"),
+        ("ring", "Anillo", "item"),
+        ("wallet", "Billetera", "item"),
+        ("credit card", "Tarjeta", "item"),
+        ("keys", "Llaves", "item"),
+        ("backpack", "Mochila", "item"),
 
-    CATEGORIES: Dict[str, List[str]] = {
-        "person": ["person"],
-        "animal": ["dog", "cat", "bird", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe"],
-        "vehicle": ["car", "motorcycle", "bus", "truck", "bicycle", "airplane", "boat"],
-        "device": ["cell phone", "laptop", "mouse", "remote", "keyboard", "tv", "microwave", "oven", "toaster", "clock"],
-        "furniture": ["chair", "couch", "bed", "dining table", "potted plant"],
-        "item": ["bottle", "cup", "book", "backpack", "handbag", "umbrella", "scissors", "toothbrush", "fork", "knife", "spoon", "bowl"]
-    }
+        # Útiles de escritorio, estudio y papelería
+        ("pen", "Lapicero", "item"),
+        ("ballpoint pen", "Lapicero", "item"),
+        ("pencil", "Lapiz", "item"),
+        ("notebook", "Cuaderno", "item"),
+        ("book", "Libro", "item"),
+        ("paper", "Papel / Hoja", "item"),
+        ("scissors", "Tijeras", "item"),
+
+        # Tecnología y cables
+        ("cell phone", "Celular", "device"),
+        ("smartphone", "Celular", "device"),
+        ("laptop", "Computador / Laptop", "device"),
+        ("computer mouse", "Mouse", "device"),
+        ("keyboard", "Teclado", "device"),
+        ("headphones", "Audifonos", "device"),
+        ("earphones", "Auriculares", "device"),
+        ("cable", "Cable", "device"),
+        ("charger", "Cargador", "device"),
+        ("remote control", "Control Remoto", "device"),
+        ("television", "Pantalla / TV", "device"),
+
+        # Objetos de cocina y bebidas
+        ("bottle", "Botella", "item"),
+        ("water bottle", "Botella", "item"),
+        ("cup", "Taza / Vaso", "item"),
+        ("mug", "Pocillo / Taza", "item"),
+        ("glass", "Vaso", "item"),
+        ("plate", "Plato", "item"),
+        ("fork", "Tenedor", "item"),
+        ("knife", "Cuchillo", "item"),
+        ("spoon", "Cuchara", "item"),
+
+        # Muebles y entorno
+        ("chair", "Silla", "furniture"),
+        ("table", "Mesa", "furniture"),
+        ("desk", "Escritorio", "furniture"),
+        ("bed", "Cama", "furniture"),
+        ("door", "Puerta", "furniture"),
+        ("potted plant", "Planta", "furniture"),
+
+        # Animales y vehículos
+        ("dog", "Perro", "animal"),
+        ("cat", "Gato", "animal"),
+        ("bird", "Ave", "animal"),
+        ("car", "Auto", "vehicle"),
+        ("motorcycle", "Motocicleta", "vehicle"),
+        ("bicycle", "Bicicleta", "vehicle")
+    ]
 
     COLORS: Dict[str, Tuple[int, int, int]] = {
         "person": (255, 140, 0),      # Azul / Cyan
@@ -120,29 +94,33 @@ class ObjectDetector:
         "vehicle": (200, 0, 200),     # Púrpura
         "device": (0, 255, 128),      # Verde Neón
         "furniture": (255, 200, 0),   # Amarillo Oro
-        "item": (0, 220, 255),        # Amarillo brillante
+        "item": (0, 220, 255),        # Amarillo Neón
         "other": (200, 200, 200)      # Gris claro
     }
 
-    def __init__(self, model_path: str = "models/yolov8n.pt", conf_threshold: float = 0.25, iou_threshold: float = 0.70):
+    def __init__(self, model_path: str = "models/yolov8s-worldv2.pt", conf_threshold: float = 0.20, iou_threshold: float = 0.65):
         self.model_path = model_path
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
-        print(f"🧠 Cargando modelo de Inteligencia Artificial ({model_path})...")
-        self.model = YOLO(model_path)
-        print("✔️ Modelo de IA configurado con soporte para objetos superpuestos y en mano.")
 
-    def _get_category(self, class_name: str) -> str:
-        for cat, items in self.CATEGORIES.items():
-            if class_name in items:
-                return cat
-        return "other"
+        print(f"🧠 Cargando modelo de Inteligencia Artificial Universal ({model_path})...")
+        self.model = YOLO(model_path)
+
+        # Configurar clases abiertas en el modelo
+        self.english_classes = [item[0] for item in self.ITEMS_CATALOG]
+        self.es_map = {item[0]: item[1] for item in self.ITEMS_CATALOG}
+        self.category_map = {item[0]: item[2] for item in self.ITEMS_CATALOG}
+
+        try:
+            self.model.set_classes(self.english_classes)
+            print(f"✔️ {len(self.english_classes)} clases universales registradas (lapiceros, cuadernos, gafas, etc.).")
+        except Exception as e:
+            print(f"⚠️ Nota de inicialización: {e}")
 
     def detect(self, frame: np.ndarray) -> Tuple[List[Detection], Dict[str, int], Dict[str, int]]:
         """
-        Inferencia optimizada:
-        - iou=0.70 permite que objetos pequeños dentro de personas no sean suprimidos.
-        - agnostic_nms=False asegura que distintas clases puedan solaparse.
+        Inferencia de vocabulario abierto:
+        Detecta personas, objetos en mano, útiles de estudio, etc.
         """
         results = self.model(
             frame,
@@ -160,10 +138,10 @@ class ObjectDetector:
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             conf = float(box.conf[0].item())
             class_id = int(box.cls[0].item())
-            class_name_en = self.model.names[class_id]
-            class_name_es = self.COCO_SPANISH_MAP.get(class_name_en, class_name_en.capitalize())
+            class_name_en = results.names.get(class_id, "unknown")
+            class_name_es = self.es_map.get(class_name_en, class_name_en.capitalize())
+            category = self.category_map.get(class_name_en, "other")
 
-            category = self._get_category(class_name_en)
             category_counts[category] = category_counts.get(category, 0) + 1
             item_inventory[class_name_es] = item_inventory.get(class_name_es, 0) + 1
 
@@ -183,20 +161,17 @@ class ObjectDetector:
                 )
             )
 
-        # Ordenar por área de mayor a menor:
-        # Los rectángulos grandes (personas/muebles) se procesan primero,
-        # y los pequeños (celulares, tazas, botellas) se dibujan encima sin ser tapados.
+        # Ordenar por área: las personas se dibujan abajo y los objetos sostenidos encima
         detections.sort(key=lambda d: d.area, reverse=True)
 
         return detections, category_counts, item_inventory
 
     def draw_detections(self, frame: np.ndarray, detections: List[Detection]) -> np.ndarray:
-        """Dibuja en capas con grosor adaptable según el tamaño del objeto."""
+        """Dibuja bounding boxes estilizados y etiquetas en español."""
         for det in detections:
             x1, y1, x2, y2 = det.bbox
             color = self.COLORS.get(det.category, self.COLORS["other"])
 
-            # Grosor y estilo según tipo: Si es persona, borde fino; si es objeto en mano, más destacado
             is_person = (det.category == "person")
             border_thickness = 1 if is_person else 2
 
@@ -213,13 +188,12 @@ class ObjectDetector:
             cv2.line(frame, (x1, y2), (x1 + line_len, y2), color, corner_thick)
             cv2.line(frame, (x1, y2), (x1, y2 - line_len), color, corner_thick)
             cv2.line(frame, (x2, y2), (x2 - line_len, y2), color, corner_thick)
-            cv2.line(frame, (x2, y2), (x2, y2 - line_len), color, corner_thick)
+            cv2.line(frame, (x2, y2), (x2 - line_len, y2), color, corner_thick)
 
             # 3. Etiqueta con porcentaje
             label = f"{det.class_name_es.upper()} {int(det.confidence * 100)}%"
             (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
             
-            # Posición de etiqueta: si no cabe arriba, ponerla dentro
             label_y = max(h + 6, y1)
             cv2.rectangle(frame, (x1, label_y - h - 6), (x1 + w + 8, label_y), color, -1)
             cv2.putText(frame, label, (x1 + 4, label_y - 4),
