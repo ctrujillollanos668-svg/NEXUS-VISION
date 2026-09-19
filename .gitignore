@@ -1,0 +1,27 @@
+# Entorno Virtual
+.venv/
+env/
+venv/
+
+# Bytecode de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Configuración local sensible
+.env
+
+# Pesos de modelos grandes (se descargan automáticamente)
+models/*.pt
+*.pt
+*.onnx
+
+# Almacenamiento local de pruebas
+storage/snapshots/*
+!storage/snapshots/.gitkeep
+storage/recordings/*
+
+# Archivos de sistema / IDE
+.vscode/
+.idea/
+*.log
