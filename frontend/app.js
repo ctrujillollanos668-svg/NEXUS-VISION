@@ -1,6 +1,6 @@
 /**
  * NEXUS VISION — Controlador Frontend del Dashboard
- * Soporte de Voz Bidireccional: Reconocimiento por Micrófono y Respuestas Habladas.
+ * Soporte de Voz Bidireccional y Respuestas Instantáneas.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -9,6 +9,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const systemStatusText = document.getElementById('systemStatusText');
     const globalAlertBanner = document.getElementById('globalAlertBanner');
     const globalAlertText = document.getElementById('globalAlertText');
+
+    const activeCamTitle = document.getElementById('activeCamTitle');
+    const cameraSelect = document.getElementById('cameraSelect');
+    const btnScanCams = document.getElementById('btnScanCams');
 
     const fpsVal = document.getElementById('fpsVal');
     const motionVal = document.getElementById('motionVal');
@@ -44,7 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnMic = document.getElementById('btnMic');
     const micIcon = document.getElementById('micIcon');
 
-    // Estado de Voz
     let voiceOutputEnabled = true;
     let recognition = null;
     let isListening = false;
@@ -57,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(updateClock, 1000);
     updateClock();
 
-    // 2. Inicializar Reconocimiento de Voz (Web Speech API)
+    // 2. Reconocimiento de Voz
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
         recognition = new SpeechRecognition();
@@ -79,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         recognition.onerror = (event) => {
-            console.warn('Error de reconocimiento de voz:', event.error);
+            console.warn('Error reconocimiento voz:', event.error);
             stopListening();
         };
 
@@ -88,7 +91,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     } else {
         btnMic.style.display = 'none';
-        console.warn('El navegador no soporta reconocimiento de voz nativo.');
     }
 
     function stopListening() {
@@ -111,14 +113,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 3. Síntesis de Voz Hablada (Text-to-Speech)
+    // 3. Síntesis de Voz
     function speakText(text) {
         if (!voiceOutputEnabled || !('speechSynthesis' in window)) return;
 
-        // Cancelar cualquier audio anterior
         window.speechSynthesis.cancel();
 
-        // Limpiar formato markdown y emojis para una lectura natural
         const clean = text
             .replace(/\*\*(.*?)\*\*/g, '$1')
             .replace(/\*(.*?)\*/g, '$1')
@@ -133,10 +133,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const utterance = new SpeechSynthesisUtterance(clean);
         utterance.lang = 'es-ES';
-        utterance.rate = 1.05;
-        utterance.pitch = 1.0;
+        utterance.rate = 1.08;
 
-        // Buscar voz en español
         const voices = window.speechSynthesis.getVoices();
         const esVoice = voices.find(v => v.lang.startsWith('es') || v.lang.includes('es-'));
         if (esVoice) {
@@ -146,19 +144,12 @@ document.addEventListener('DOMContentLoaded', () => {
         window.speechSynthesis.speak(utterance);
     }
 
-    // Asegurar carga de voces
-    if ('speechSynthesis' in window) {
-        window.speechSynthesis.onvoiceschanged = () => {
-            window.speechSynthesis.getVoices();
-        };
-    }
-
     btnToggleVoiceTTS.addEventListener('click', () => {
         voiceOutputEnabled = !voiceOutputEnabled;
         if (voiceOutputEnabled) {
             voiceTTSBtnText.textContent = "Voz de Nexus (ON)";
             btnToggleVoiceTTS.className = "btn btn-secondary";
-            speakText("Voz de Nexus activada.");
+            speakText("Voz activada.");
         } else {
             voiceTTSBtnText.textContent = "Voz de Nexus (OFF)";
             btnToggleVoiceTTS.className = "btn btn-outline";
@@ -277,12 +268,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 6. Chat con IA y Respuesta Hablada
+    // 6. Chat con IA Rápido con Indicador de Pensando
     async function sendChatMessage(msg) {
         if (!msg || msg.trim() === '') return;
 
         appendChatBubble('user', 'Tú', msg);
         chatInput.value = '';
+
+        // Burbuja de "pensando..."
+        const loadingBubbleId = 'loading-' + Date.now();
+        const loadingBubble = document.createElement('div');
+        loadingBubble.id = loadingBubbleId;
+        loadingBubble.className = 'chat-bubble ai';
+        loadingBubble.innerHTML = `<div class="bubble-sender">🤖 Nexus AI</div><div class="bubble-text"><em>Observando la cámara y pensando... 💭</em></div>`;
+        chatMessages.appendChild(loadingBubble);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
 
         try {
             const res = await fetch('/api/chat', {
@@ -290,6 +290,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: msg })
             });
+
+            // Remover burbuja de carga
+            const el = document.getElementById(loadingBubbleId);
+            if (el) el.remove();
 
             if (res.ok) {
                 const data = await res.json();
@@ -299,13 +303,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     .replace(/\n/g, '<br>');
                 appendChatBubble('ai', '🤖 Nexus AI', formatted, true);
 
-                // ¡HABLAR LA RESPUESTA!
                 speakText(data.reply);
 
             } else {
                 appendChatBubble('ai', '🤖 Nexus AI', 'Lo siento, ocurrió un error procesando tu consulta.');
             }
         } catch (err) {
+            const el = document.getElementById(loadingBubbleId);
+            if (el) el.remove();
             appendChatBubble('ai', '🤖 Nexus AI', 'Error de conexión con el servidor.');
         }
     }
@@ -362,7 +367,61 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 8. Botones de Control
+    // 8. Gestión de Múltiples Cámaras
+    async function loadCameras() {
+        try {
+            const res = await fetch('/api/cameras');
+            if (!res.ok) return;
+            const data = await res.json();
+            
+            cameraSelect.innerHTML = '';
+            data.cameras.forEach(cam => {
+                const opt = document.createElement('option');
+                opt.value = cam.id;
+                opt.textContent = cam.name;
+                if (cam.id == data.current_camera) {
+                    opt.selected = true;
+                }
+                cameraSelect.appendChild(opt);
+            });
+
+            activeCamTitle.textContent = `TRANSMISIÓN EN TIEMPO REAL (CÁMARA ${data.current_camera})`;
+        } catch (err) {
+            console.error("Error cargando cámaras:", err);
+        }
+    }
+
+    cameraSelect.addEventListener('change', async (e) => {
+        const newCamId = e.target.value;
+        try {
+            const res = await fetch('/api/cameras/switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ camera_id: newCamId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                activeCamTitle.textContent = `TRANSMISIÓN EN TIEMPO REAL (CÁMARA ${newCamId})`;
+                videoFeed.src = "/video_feed?t=" + new Date().getTime();
+                speakText(`Cámara cambiada a la fuente ${newCamId}.`);
+            } else {
+                alert(`No se pudo conectar a la cámara ${newCamId}.`);
+                loadCameras();
+            }
+        } catch (err) {
+            alert("Error al intentar cambiar de cámara.");
+        }
+    });
+
+    btnScanCams.addEventListener('click', async () => {
+        btnScanCams.disabled = true;
+        btnScanCams.innerHTML = '<span>⏳ Escaneando...</span>';
+        await loadCameras();
+        btnScanCams.disabled = false;
+        btnScanCams.innerHTML = '<span>🔍 Escanear</span>';
+    });
+
+    // 9. Botones de Control
     btnToggleMotion.addEventListener('click', async () => {
         await fetch('/api/toggle_motion', { method: 'POST' });
         fetchStats();
@@ -381,10 +440,11 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchEvents();
     });
 
-    // Intervalos de sondeo
+    // Intervalos y Carga Inicial
     setInterval(fetchStats, 1500);
     setInterval(fetchEvents, 4000);
 
+    loadCameras();
     fetchStats();
     fetchEvents();
 });

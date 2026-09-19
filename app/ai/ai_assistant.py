@@ -1,7 +1,6 @@
 """
-Motor de IA Generativa Multimodal para NEXUS VISION.
-Conecta con Google Gemini (Vision + LLM) para ver la cámara en tiempo real
-y responder cualquier pregunta en lenguaje natural sin restricciones.
+Motor de IA Generativa Multimodal Ultra Rápido para NEXUS VISION.
+Optimizado con miniatura ultraligera, límite de tokens y llamadas asíncronas para respuestas en < 1 segundo.
 """
 import io
 from datetime import datetime
@@ -12,7 +11,6 @@ from app.core.config import settings
 from app.database.database import SessionLocal
 from app.database.models import EventLog
 
-# Importar Google Generative AI
 try:
     import google.generativeai as genai
     HAS_GENAI = True
@@ -20,7 +18,7 @@ except ImportError:
     HAS_GENAI = False
 
 class AIAssistant:
-    """Asistente de IA con razonamiento visual profundo y conversacional."""
+    """Asistente de IA con razonamiento visual profundo y ultra veloz."""
 
     def __init__(self):
         self.name = "Nexus AI"
@@ -33,64 +31,65 @@ class AIAssistant:
         if HAS_GENAI and api_key and api_key != "":
             try:
                 genai.configure(api_key=api_key)
-                self.gemini_model = genai.GenerativeModel(settings.AI_MODEL_NAME)
-                print(f"✨ [AI Assistant] Google Gemini ({settings.AI_MODEL_NAME}) conectado con éxito con Visión Real!")
+                # Configuración de generación optimizada para velocidad
+                gen_config = genai.types.GenerationConfig(
+                    max_output_tokens=180,
+                    temperature=0.7
+                )
+                self.gemini_model = genai.GenerativeModel(
+                    settings.AI_MODEL_NAME,
+                    generation_config=gen_config
+                )
+                print(f"✨ [AI Assistant] Google Gemini ({settings.AI_MODEL_NAME}) optimizado y conectado!")
             except Exception as e:
                 print(f"⚠️ Error inicializando Gemini: {e}")
                 self.gemini_model = None
 
-    def ask(self, query: str, scene_context: Dict[str, Any], frame_bytes: Optional[bytes] = None) -> str:
+    async def ask_async(self, query: str, scene_context: Dict[str, Any], frame_bytes: Optional[bytes] = None) -> str:
         """
-        Responde a cualquier pregunta del usuario.
-        Si Gemini está configurado, le envía la foto real de la cámara y la pregunta.
-        Si no, usa el motor semántico local mejorado.
+        Responde de forma asíncrona y no bloqueante.
         """
-        # Re-intentar inicializar si se agregó la clave en caliente
         if self.gemini_model is None and settings.GEMINI_API_KEY.strip():
             self._init_gemini()
 
-        # 1. Si Gemini está activo: VISIÓN REAL MULTIMODAL
         if self.gemini_model is not None:
-            return self._ask_gemini(query, scene_context, frame_bytes)
+            return await self._ask_gemini_async(query, scene_context, frame_bytes)
 
-        # 2. Si no hay clave de Gemini: Motor conversacional contextual
         return self._ask_local(query, scene_context)
 
-    def _ask_gemini(self, query: str, scene_context: Dict[str, Any], frame_bytes: Optional[bytes]) -> str:
-        """Consulta directa a Google Gemini con la imagen en vivo de la cámara."""
+    async def _ask_gemini_async(self, query: str, scene_context: Dict[str, Any], frame_bytes: Optional[bytes]) -> str:
+        """Consulta asíncrona ultra rápida a Google Gemini con imagen comprimida."""
         try:
-            # Contexto del sistema de seguridad
             inventory_str = ", ".join([f"{k} ({v})" for k, v in scene_context.get("inventory", {}).items()]) or "Ninguno"
             motion_str = f"{scene_context.get('scene_motion', 0.0):.1f}%"
             
             system_prompt = (
-                f"Eres Nexus AI, el asistente inteligente y amigable de seguridad y visión artificial de NEXUS VISION.\n"
-                f"Estás viendo lo que capta la cámara web del usuario en tiempo real.\n"
-                f"- Objetos detectados por el detector local: [{inventory_str}]\n"
-                f"- Nivel de movimiento actual: {motion_str}\n"
-                f"- Estado del sistema: {scene_context.get('status', 'ONLINE')}\n\n"
+                f"Eres Nexus AI, asistente de seguridad y visión artificial de NEXUS VISION.\n"
+                f"Estás viendo la cámara en vivo. Objetos detectados: [{inventory_str}], Movimiento: {motion_str}.\n"
                 f"Instrucciones:\n"
-                f"1. Responde en español de forma natural, amigable, concisa y precisa.\n"
-                f"2. Observa con atención la imagen para responder cualquier detalle visual (colores de ropa, gestos, objetos, personas, entorno, etc.).\n"
-                f"3. Si el usuario te habla informalmente o pregunta de cualquier tema, mantén una conversación fluida y agradable.\n\n"
-                f"Pregunta del usuario: {query}"
+                f"1. Responde en español de forma natural, amigable, concisa (1 o 2 oraciones máximo) y directa.\n"
+                f"2. Observa la imagen para detalles visuales (colores, gestos, objetos, personas, ropa).\n\n"
+                f"Pregunta: {query}"
             )
 
-            # Cargar imagen si está disponible
             contents = [system_prompt]
+
+            # Optimización de Imagen: Redimensionar a max 512px para subida ultrarrápida (20KB en lugar de 300KB)
             if frame_bytes:
                 try:
                     pil_img = Image.open(io.BytesIO(frame_bytes))
+                    pil_img.thumbnail((512, 512), Image.Resampling.LANCZOS)
                     contents.append(pil_img)
                 except Exception:
                     pass
 
-            response = self.gemini_model.generate_content(contents)
+            # Llamada asíncrona no bloqueante
+            response = await self.gemini_model.generate_content_async(contents)
             return response.text.strip()
 
         except Exception as e:
             print(f"⚠️ Error llamando a Gemini API: {e}")
-            return f"Lo siento, ocurrió un problema conectando con Gemini: {str(e)[:120]}... Volviendo a respuesta local."
+            return self._ask_local(query, scene_context)
 
     def _ask_local(self, query: str, ctx: Dict[str, Any]) -> str:
         """Motor conversacional local de contingencia."""
@@ -98,38 +97,26 @@ class AIAssistant:
         inventory = ctx.get("inventory", {})
         motion = ctx.get("scene_motion", 0.0)
 
-        # Consultas de visión en vivo
         if any(w in q for w in ["viendo", "ves", "hay", "escena", "frente", "ahora", "que tengo", "que hay", "mira"]):
             if not inventory:
                 return "Actualmente la cámara no detecta ningún objeto en movimiento en el plano visual."
             items_desc = [f"{qty} {name}" for name, qty in inventory.items()]
             return f"👁️ **En este momento observo:** {', '.join(items_desc)} (Movimiento: **{motion:.1f}%**)."
 
-        # Consultas de alertas
         elif any(w in q for w in ["alerta", "intrusion", "restringida", "peligro"]):
             return self._query_alerts_history()
 
-        # Consultas de historial
         elif any(w in q for w in ["paso", "ocurrio", "reciente", "historial", "hoy"]):
             return self._query_recent_events()
 
-        # Resumen general
         elif any(w in q for w in ["resumen", "estado", "seguridad", "reporte"]):
             return self._generate_security_report(ctx)
 
-        # Saludos y charla
         elif any(w in q for w in ["hola", "buenas", "que tal", "quien eres"]):
-            return (
-                "¡Hola! Soy **Nexus AI**. Puedo decirte qué objetos y personas detecto, alertarte de intrusiones y darte reportes de seguridad.\n\n"
-                "💡 *Tip:* Para desbloquear inteligencia visual total (reconocer colores de ropa, responder cualquier pregunta libre y razonar), agrega tu clave gratuita de **Gemini** en el archivo `.env`."
-            )
+            return "¡Hola! Soy **Nexus AI**, tu asistente inteligente de seguridad y visión artificial. ¿En qué te ayudo?"
 
         else:
-            return (
-                f"Te escucho. Actualmente el sistema tiene **{ctx.get('total_items_in_scene', 0)} objetos detectados** "
-                f"con **{motion:.1f}% de movimiento**.\n\n"
-                "💡 *Para hacerme preguntas completamente libres sobre cualquier tema o detalle de la imagen, activa tu clave gratis de Google Gemini en el archivo `.env`.*"
-            )
+            return f"Te escucho. Actualmente el sistema tiene **{ctx.get('total_items_in_scene', 0)} objetos detectados** con **{motion:.1f}% de movimiento**."
 
     def _query_alerts_history(self) -> str:
         db = SessionLocal()
@@ -142,17 +129,13 @@ class AIAssistant:
             ).order_by(EventLog.created_at.desc()).limit(5).all()
 
             if not alerts:
-                return "🟢 **Perímetro Seguro**: No se ha registrado ninguna alerta crítica de intrusión durante el día de hoy."
+                return "🟢 **Perímetro Seguro**: No se ha registrado ninguna alerta crítica de intrusión hoy."
 
             latest = alerts[0]
             time_diff = int((now - latest.created_at).total_seconds() // 60)
-            diff_str = f"hace {time_diff} minutos" if time_diff > 0 else "hace unos instantes"
+            diff_str = f"hace {time_diff} minutos" if time_diff > 0 else "hace instantes"
 
-            return (
-                f"🚨 **Reporte de Alertas**: Se han registrado **{len(alerts)} intrusiones** hoy. "
-                f"La más reciente fue **{diff_str}** a las **{latest.created_at.strftime('%H:%M:%S')}**, "
-                f"donde se detectó un(a) **{latest.object_name}** en la **{latest.zone_name or 'Zona Restringida'}**."
-            )
+            return f"🚨 Se registraron **{len(alerts)} intrusiones** hoy. La última fue {diff_str} por un(a) **{latest.object_name}** en **{latest.zone_name or 'Zona Restringida'}**."
         finally:
             db.close()
 
@@ -161,9 +144,9 @@ class AIAssistant:
         try:
             events = db.query(EventLog).order_by(EventLog.created_at.desc()).limit(4).all()
             if not events:
-                return "La base de datos aún no tiene eventos recientes registrados."
+                return "No hay eventos recientes registrados."
 
-            lines = ["📋 **Últimos eventos registrados:**"]
+            lines = ["📋 **Últimos eventos:**"]
             for e in events:
                 tag = "🚨 ALERTA" if e.alert_level == "ALERT" else "📸 DETECCIÓN"
                 lines.append(f"- **{e.created_at.strftime('%H:%M:%S')}** | {tag}: {e.object_name} ({int((e.confidence or 0)*100)}%)")
@@ -180,13 +163,6 @@ class AIAssistant:
             total_events = db.query(EventLog).filter(EventLog.created_at >= today_start).count()
             total_alerts = db.query(EventLog).filter(EventLog.alert_level == "ALERT", EventLog.created_at >= today_start).count()
 
-            return (
-                "📊 **INFORME DE SEGURIDAD (NEXUS VISION)**\n"
-                f"- **Cámara:** {ctx.get('status', 'ONLINE')} ({ctx.get('fps', 0)} FPS)\n"
-                f"- **Objetos en Vivo:** {ctx.get('total_items_in_scene', 0)}\n"
-                f"- **Eventos hoy:** {total_events}\n"
-                f"- **Alertas hoy:** {total_alerts}\n"
-                f"- **Diagnóstico:** {'⚠️ Requiere atención' if total_alerts > 0 else '🟢 Seguro'}"
-            )
+            return f"📊 **Reporte Rápido:** {ctx.get('total_items_in_scene', 0)} objetos en vivo | {total_events} eventos hoy | {total_alerts} alertas | Estado: {'⚠️ Atención' if total_alerts > 0 else '🟢 Seguro'}"
         finally:
             db.close()

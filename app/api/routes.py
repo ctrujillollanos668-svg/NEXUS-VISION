@@ -20,6 +20,9 @@ ai_assistant = AIAssistant()
 class ChatRequest(BaseModel):
     message: str
 
+class CameraSwitchRequest(BaseModel):
+    camera_id: Any
+
 def generate_video_stream() -> Generator[bytes, None, None]:
     """Generador de streaming MJPEG para navegadores web."""
     while True:
@@ -82,11 +85,11 @@ def get_event_history(limit: int = 30):
         db.close()
 
 @router.post("/api/chat")
-def ask_ai(req: ChatRequest):
-    """Endpoint de interacción con el Asistente de IA (soporte multimodal con visión)."""
+async def ask_ai(req: ChatRequest):
+    """Endpoint asíncrono ultra veloz para el Asistente de IA."""
     scene_context = vision_service.get_stats()
     latest_frame = vision_service.get_latest_jpeg()
-    response_text = ai_assistant.ask(req.message, scene_context, frame_bytes=latest_frame)
+    response_text = await ai_assistant.ask_async(req.message, scene_context, frame_bytes=latest_frame)
     return {
         "reply": response_text,
         "time": time.strftime("%H:%M:%S")
@@ -106,3 +109,19 @@ def toggle_sound():
 def toggle_zones():
     new_state = vision_service.toggle_zones()
     return {"zones_enabled": new_state}
+
+@router.get("/api/cameras")
+def get_cameras():
+    """Retorna la lista de cámaras detectadas en el sistema."""
+    return vision_service.list_cameras()
+
+@router.post("/api/cameras/switch")
+def switch_camera(req: CameraSwitchRequest):
+    """Cambia la cámara activa del sistema."""
+    success = vision_service.switch_camera(req.camera_id)
+    return {
+        "success": success,
+        "camera_id": req.camera_id,
+        "message": f"Cámara cambiada exitosamente a '{req.camera_id}'." if success else f"Error al cambiar a cámara '{req.camera_id}'."
+    }
+

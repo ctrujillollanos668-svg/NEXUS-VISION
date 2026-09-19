@@ -47,7 +47,15 @@
                 <div class="card-header">
                     <div class="card-title">
                         <span class="card-icon">📹</span>
-                        <span>TRANSMISIÓN EN TIEMPO REAL (CÁMARA 0)</span>
+                        <span id="activeCamTitle">TRANSMISIÓN EN TIEMPO REAL</span>
+                    </div>
+                    <div class="camera-controls-inline">
+                        <select id="cameraSelect" class="camera-dropdown" title="Cambiar Fuente de Video">
+                            <option value="0">📷 Buscando cámaras...</option>
+                        </select>
+                        <button class="btn btn-sm btn-outline" id="btnScanCams" title="Escanear Cámaras Conectadas">
+                            <span>🔍 Escanear</span>
+                        </button>
                     </div>
                     <div class="stream-stats">
                         <span class="stat-pill"><strong id="fpsVal">0.0</strong> FPS</span>

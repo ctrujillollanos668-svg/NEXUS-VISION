@@ -146,6 +146,30 @@ class VisionService:
                 "version": settings.VERSION
             }
 
+    def list_cameras(self) -> Dict[str, Any]:
+        """Lista las cámaras disponibles en el sistema y la activa."""
+        available = CameraManager.list_available_cameras()
+        # Asegurar que al menos la cámara actual aparezca si no fue detectada por el escáner rápido
+        current_in_list = any(c["id"] == self.cam.camera_index for c in available)
+        if not current_in_list:
+            available.insert(0, {
+                "id": self.cam.camera_index,
+                "name": f"📷 Cámara Actual ({self.cam.camera_index})",
+                "type": "custom"
+            })
+        return {
+            "current_camera": self.cam.camera_index,
+            "cameras": available
+        }
+
+    def switch_camera(self, new_camera: Any) -> bool:
+        """Cambia la cámara activa de forma segura."""
+        with self._lock:
+            success = self.cam.switch_source(new_camera)
+            if success:
+                self.alert_manager.camera_id = int(new_camera) if str(new_camera).isdigit() else 0
+            return success
+
     def toggle_motion(self) -> bool:
         self.only_moving = not self.only_moving
         return self.only_moving

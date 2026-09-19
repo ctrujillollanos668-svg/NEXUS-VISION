@@ -1,16 +1,17 @@
 """
 Módulo de Gestión de Cámara para NEXUS VISION.
-Controla la captura de video, cálculo de FPS, HUD táctico, alertas rojas de intrusión y barra de inventario.
+Controla la captura de video, cálculo de FPS, HUD táctico, alertas rojas de intrusión, barra de inventario
+y soporte para escaneo y cambio dinámico de múltiples cámaras / fuentes de video.
 """
 import time
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, List, Any, Union
 import cv2
 import numpy as np
 
 class CameraManager:
-    """Administra la captura de video y la interfaz HUD."""
+    """Administra la captura de video, escaneo de dispositivos y la interfaz HUD."""
 
-    def __init__(self, camera_index: int = 0, target_fps: int = 30):
+    def __init__(self, camera_index: Union[int, str] = 0, target_fps: int = 30):
         self.camera_index = camera_index
         self.target_fps = target_fps
         self.cap: Optional[cv2.VideoCapture] = None
@@ -18,13 +19,41 @@ class CameraManager:
         self.prev_time = 0.0
         self.fps = 0.0
 
+    @staticmethod
+    def list_available_cameras(max_tested: int = 4) -> List[Dict[str, Any]]:
+        """
+        Escanea los puertos del sistema para detectar webcams conectadas.
+        Retorna una lista con los IDs y nombres descriptivos.
+        """
+        available_cams = []
+        for index in range(max_tested):
+            temp_cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+            if temp_cap.isOpened():
+                # Intentar leer un frame de prueba para certificar funcionamiento
+                ret, _ = temp_cap.read()
+                if ret:
+                    available_cams.append({
+                        "id": index,
+                        "name": f"📷 Cámara USB/Integrada #{index}",
+                        "type": "hardware"
+                    })
+                temp_cap.release()
+        return available_cams
+
     def start(self) -> bool:
-        """Inicia la captura de video desde la cámara."""
-        print(f"📷 Conectando a la cámara (Índice {self.camera_index})...")
-        self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
+        """Inicia la captura de video desde la fuente seleccionada."""
+        print(f"📷 Conectando a la fuente de video ({self.camera_index})...")
+        
+        # Si es un índice numérico en Windows, usamos DirectShow para velocidad
+        if isinstance(self.camera_index, int) or (isinstance(self.camera_index, str) and self.camera_index.isdigit()):
+            cam_idx = int(self.camera_index)
+            self.cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
+        else:
+            # Si es URL RTSP / HTTP o ruta de archivo de video
+            self.cap = cv2.VideoCapture(str(self.camera_index))
         
         if not self.cap.isOpened():
-            print(f"❌ Error: No se pudo acceder a la cámara {self.camera_index}.")
+            print(f"❌ Error: No se pudo acceder a la fuente {self.camera_index}.")
             self.is_running = False
             return False
 
@@ -32,8 +61,17 @@ class CameraManager:
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         self.is_running = True
         self.prev_time = time.time()
-        print(f"✔️ Cámara {self.camera_index} lista.")
+        print(f"✔️ Fuente de video {self.camera_index} lista y capturando.")
         return True
+
+    def switch_source(self, new_source: Union[int, str]) -> bool:
+        """
+        Cambia en caliente la fuente de video actual por una nueva sin colapsar el sistema.
+        """
+        print(f"🔄 Cambiando fuente de video de {self.camera_index} -> {new_source}...")
+        self.stop()
+        self.camera_index = int(new_source) if str(new_source).isdigit() else new_source
+        return self.start()
 
     def read_frame(self) -> Tuple[bool, Optional[np.ndarray]]:
         """Lee el siguiente frame y actualiza FPS."""
@@ -69,7 +107,7 @@ class CameraManager:
         overlay = frame.copy()
 
         # 1. Panel Superior Izquierdo (Estado del Sistema y Filtro de Movimiento)
-        cv2.rectangle(overlay, (10, 10), (370, 90), (18, 18, 18), -1)
+        cv2.rectangle(overlay, (10, 10), (380, 90), (18, 18, 18), -1)
         
         # 2. Panel Superior Derecho (Contador Rápido)
         cv2.rectangle(overlay, (w - 360, 10), (w - 10, 100), (18, 18, 18), -1)
@@ -86,7 +124,7 @@ class CameraManager:
 
         # Bordes decorativos
         motion_border_color = (0, 255, 128) if only_moving else (0, 180, 255)
-        cv2.rectangle(frame, (10, 10), (370, 90), motion_border_color, 1)
+        cv2.rectangle(frame, (10, 10), (380, 90), motion_border_color, 1)
         cv2.rectangle(frame, (w - 360, 10), (w - 10, 100), (0, 180, 255), 1)
         cv2.rectangle(frame, (10, h - 50), (w - 10, h - 10), (255, 180, 0), 1)
 
@@ -99,9 +137,10 @@ class CameraManager:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.52, (255, 255, 255), 2, cv2.LINE_AA)
 
         # Textos Panel Izquierdo
+        cam_tag = f"CAM #{self.camera_index}" if isinstance(self.camera_index, int) or str(self.camera_index).isdigit() else "CAM IP/STREAM"
         status_mode = "[FILTRO: SOLO MOVIMIENTO]" if only_moving else "[MODO: TODOS LOS OBJETOS]"
-        cv2.putText(frame, f"NEXUS VISION | {status_mode}", (20, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.46, (0, 255, 180), 2)
+        cv2.putText(frame, f"NEXUS VISION | {cam_tag} | {status_mode}", (20, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 255, 180), 2)
         cv2.putText(frame, f"FPS: {self.fps:.1f} | Movimiento Sala: {scene_motion:.1f}%", (20, 52),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.44, (255, 255, 255), 1)
         cv2.putText(frame, "Presiona 'm' para alternar filtro | 'q' salir", (20, 74),
@@ -135,10 +174,10 @@ class CameraManager:
         return frame
 
     def stop(self):
-        """Libera la cámara y ventanas."""
+        """Libera la cámara."""
         self.is_running = False
         if self.cap is not None:
             self.cap.release()
             self.cap = None
-        cv2.destroyAllWindows()
         print("🛑 Cámara detenida y recursos liberados.")
+
