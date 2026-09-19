@@ -1,6 +1,5 @@
 /**
  * NEXUS VISION — Controlador Frontend del Dashboard
- * Gestiona actualización de métricas en vivo, eventos en tiempo real y controles interactivos.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -21,6 +20,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const btnToggleMotion = document.getElementById('btnToggleMotion');
     const motionBtnText = document.getElementById('motionBtnText');
+    const btnToggleZones = document.getElementById('btnToggleZones');
+    const zonesBtnText = document.getElementById('zonesBtnText');
     const btnToggleSound = document.getElementById('btnToggleSound');
     const soundBtnText = document.getElementById('soundBtnText');
     const btnRefresh = document.getElementById('btnRefresh');
@@ -69,6 +70,15 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 motionBtnText.textContent = "Filtro: Todos los Objetos (OFF)";
                 btnToggleMotion.className = "btn btn-secondary";
+            }
+
+            // Botón de zonas de seguridad
+            if (data.zones_enabled) {
+                zonesBtnText.textContent = "Zona Restringida (ON)";
+                btnToggleZones.className = "btn btn-secondary";
+            } else {
+                zonesBtnText.textContent = "Zona Restringida (OFF)";
+                btnToggleZones.className = "btn btn-outline";
             }
 
             // Botón de sonido
@@ -121,7 +131,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.ok) return;
             const events = await res.json();
 
-            // Actualizar contador total de alertas
             const alertCount = events.filter(e => e.alert_level === 'ALERT').length;
             statAlerts.textContent = alertCount;
 
@@ -182,6 +191,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // 5. Botones de Control
     btnToggleMotion.addEventListener('click', async () => {
         await fetch('/api/toggle_motion', { method: 'POST' });
+        fetchStats();
+    });
+
+    btnToggleZones.addEventListener('click', async () => {
+        await fetch('/api/toggle_zones', { method: 'POST' });
         fetchStats();
     });
 

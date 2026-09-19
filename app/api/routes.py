@@ -1,11 +1,10 @@
 """
 Rutas y Endpoints Web para NEXUS VISION.
-Provee streaming de video en tiempo real, métricas e historial de eventos en SQLite.
 """
 import time
 from typing import Generator
-from fastapi import APIRouter, Response
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 from pathlib import Path
 
 from app.services.vision_service import VisionService
@@ -22,7 +21,7 @@ def generate_video_stream() -> Generator[bytes, None, None]:
         if frame_bytes is not None:
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        time.sleep(0.03)  # ~30 FPS
+        time.sleep(0.03)
 
 @router.get("/video_feed")
 def video_feed():
@@ -45,12 +44,10 @@ def get_event_history(limit: int = 30):
         events = db.query(EventLog).order_by(EventLog.created_at.desc()).limit(limit).all()
         result = []
         for e in events:
-            # Convertir ruta de foto a URL accesible por el navegador
             web_snapshot_url = None
             if e.snapshot_path:
                 p = Path(e.snapshot_path)
                 try:
-                    # Extraer parte relativa storage/snapshots/...
                     parts = p.parts
                     if "snapshots" in parts:
                         idx = parts.index("snapshots")
@@ -62,27 +59,33 @@ def get_event_history(limit: int = 30):
                 "id": e.id,
                 "event_type": e.event_type,
                 "object_name": e.object_name,
-                "confidence": round(e.confidence * 100, 1),
+                "confidence": round((e.confidence or 0.0) * 100, 1),
                 "camera_id": e.camera_id,
-                "zone_name": e.zone_name,
-                "alert_level": e.alert_level,
+                "zone_name": getattr(e, "zone_name", "Zona General"),
+                "alert_level": getattr(e, "alert_level", "INFO"),
                 "description": e.description,
                 "snapshot_url": web_snapshot_url,
-                "time": e.created_at.strftime("%H:%M:%S"),
-                "date": e.created_at.strftime("%Y-%m-%d")
+                "time": e.created_at.strftime("%H:%M:%S") if e.created_at else "--:--:--",
+                "date": e.created_at.strftime("%Y-%m-%d") if e.created_at else "----/--/--"
             })
         return result
+    except Exception as err:
+        print(f"⚠️ Error consultando eventos: {err}")
+        return []
     finally:
         db.close()
 
 @router.post("/api/toggle_motion")
 def toggle_motion():
-    """Alterna el filtro de solo movimiento."""
     new_state = vision_service.toggle_motion()
     return {"only_moving": new_state}
 
 @router.post("/api/toggle_sound")
 def toggle_sound():
-    """Alterna la alarma sonora."""
     new_state = vision_service.toggle_sound()
     return {"sound_enabled": new_state}
+
+@router.post("/api/toggle_zones")
+def toggle_zones():
+    new_state = vision_service.toggle_zones()
+    return {"zones_enabled": new_state}

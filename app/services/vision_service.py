@@ -1,7 +1,5 @@
 """
 Servicio Central de Visión Artificial en Tiempo Real para NEXUS VISION.
-Ejecuta el pipeline de inferencia en un hilo independiente para alimentar
-el Streaming Web y mantener estadísticas vivas para el Dashboard.
 """
 import time
 import threading
@@ -49,7 +47,6 @@ class VisionService:
         self.is_running = False
         self.thread: Optional[threading.Thread] = None
 
-        # Buffer del último frame codificado en JPEG
         self._latest_jpeg: Optional[bytes] = None
         self._lock = threading.Lock()
 
@@ -125,16 +122,13 @@ class VisionService:
                     self.current_alert_banner = alert_banner
                     self.total_detections_session += len(detections)
 
-            # Control leve de tasa de cuadros
             time.sleep(0.001)
 
     def get_latest_jpeg(self) -> Optional[bytes]:
-        """Retorna los bytes del último frame JPEG disponible de forma segura."""
         with self._lock:
             return self._latest_jpeg
 
     def get_stats(self) -> Dict[str, Any]:
-        """Retorna las estadísticas actuales en formato JSON para el frontend."""
         with self._lock:
             return {
                 "status": "ONLINE" if self.is_running else "OFFLINE",
@@ -142,6 +136,7 @@ class VisionService:
                 "scene_motion": round(self.current_scene_motion, 1),
                 "only_moving": self.only_moving,
                 "sound_enabled": self.alert_manager.enable_sound,
+                "zones_enabled": self.zone_manager.enabled,
                 "categories": self.current_category_counts,
                 "inventory": self.current_inventory,
                 "total_items_in_scene": sum(self.current_inventory.values()),
@@ -158,6 +153,10 @@ class VisionService:
     def toggle_sound(self) -> bool:
         self.alert_manager.enable_sound = not self.alert_manager.enable_sound
         return self.alert_manager.enable_sound
+
+    def toggle_zones(self) -> bool:
+        self.zone_manager.enabled = not self.zone_manager.enabled
+        return self.zone_manager.enabled
 
     def stop(self):
         self.is_running = False

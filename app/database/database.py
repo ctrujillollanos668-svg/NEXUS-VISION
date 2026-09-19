@@ -1,6 +1,5 @@
 """
 Configuración de la Base de Datos SQLite con SQLAlchemy.
-Permite persistir eventos, detecciones y metadatos de capturas.
 """
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -21,7 +20,9 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 def init_db():
-    """Crea todas las tablas en la base de datos si no existen."""
+    """Crea todas las tablas en la base de datos con los modelos actualizados."""
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    # Importar modelos para que Base los registre
+    from app.database import models
     Base.metadata.create_all(bind=engine)
-    print(f"🗄️ Base de datos SQLite inicializada en: {DB_PATH}")
+    print(f"🗄️ Base de datos SQLite inicializada y sincronizada en: {DB_PATH}")
