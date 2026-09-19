@@ -93,7 +93,11 @@ class CameraManager:
         current_time = time.time()
         diff = current_time - self.prev_time
         if diff > 0:
-            self.fps = 1.0 / diff
+            instant_fps = 1.0 / diff
+            if self.fps <= 0.5:
+                self.fps = instant_fps
+            else:
+                self.fps = 0.85 * self.fps + 0.15 * instant_fps
         self.prev_time = current_time
 
         return True, frame
