@@ -1,6 +1,6 @@
 """
 Módulo de Gestión de Cámara para NEXUS VISION.
-Controla la captura de video, cálculo de FPS, HUD superior con estado de movimiento, alertas y barra de inventario.
+Controla la captura de video, cálculo de FPS, HUD táctico, alertas rojas de intrusión y barra de inventario.
 """
 import time
 from typing import Optional, Tuple, Dict
@@ -61,7 +61,7 @@ class CameraManager:
         scene_motion: float = 0.0,
         event_alert: Optional[str] = None
     ) -> np.ndarray:
-        """Dibuja el panel de control, alertas de eventos e inventario."""
+        """Dibuja el panel de control, alertas de intrusión e inventario."""
         h, w, _ = frame.shape
         category_counts = category_counts or {"person": 0, "animal": 0, "vehicle": 0, "device": 0}
         inventory = inventory or {}
@@ -77,9 +77,10 @@ class CameraManager:
         # 3. Barra Inferior de Inventario
         cv2.rectangle(overlay, (10, h - 50), (w - 10, h - 10), (15, 15, 15), -1)
         
-        # 4. Banner Central de Alerta de Evento (si hay un evento recién registrado)
+        # 4. Banner Central de Alerta de Intrusión (Rojo Táctico)
         if event_alert:
-            cv2.rectangle(overlay, (w // 2 - 200, 15), (w // 2 + 200, 60), (0, 80, 0), -1)
+            banner_w = 460
+            cv2.rectangle(overlay, (w // 2 - (banner_w // 2), 12), (w // 2 + (banner_w // 2), 62), (0, 0, 180), -1)
 
         cv2.addWeighted(overlay, 0.78, frame, 0.22, 0, frame)
 
@@ -91,9 +92,11 @@ class CameraManager:
 
         # Banner de alerta visual
         if event_alert:
-            cv2.rectangle(frame, (w // 2 - 200, 15), (w // 2 + 200, 60), (0, 255, 100), 2)
-            cv2.putText(frame, event_alert, (w // 2 - 180, 45),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.60, (255, 255, 255), 2, cv2.LINE_AA)
+            banner_w = 460
+            bx1, bx2 = w // 2 - (banner_w // 2), w // 2 + (banner_w // 2)
+            cv2.rectangle(frame, (bx1, 12), (bx2, 62), (0, 50, 255), 2)
+            cv2.putText(frame, event_alert, (bx1 + 15, 45),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, (255, 255, 255), 2, cv2.LINE_AA)
 
         # Textos Panel Izquierdo
         status_mode = "[FILTRO: SOLO MOVIMIENTO]" if only_moving else "[MODO: TODOS LOS OBJETOS]"

@@ -1,22 +1,23 @@
 """
 NEXUS VISION — Sistema de Cámara Inteligente con IA
-Detección Universal, Filtro de Movimiento, Generación de Eventos y Base de Datos SQLite.
+Detección Universal, Filtro de Movimiento, Zonas Restringidas, Alertas Tácticas y Base de Datos.
 """
 import os
 import cv2
 from app.core.config import settings
 from app.database.database import init_db
-from app.events.event_manager import EventManager
 from app.camera.camera_manager import CameraManager
 from app.detection.detector import ObjectDetector
 from app.detection.motion_detector import MotionDetector
+from app.zones.zone_manager import ZoneManager
+from app.alerts.alert_manager import AlertManager
 
 def main():
     print("=" * 60)
     print(f"🚀 {settings.PROJECT_NAME} — v{settings.VERSION}")
     print("=" * 60)
 
-    # 1. Inicializar Base de Datos SQLite (crea storage/nexus_vision.db y sus tablas)
+    # 1. Inicializar Base de Datos SQLite
     init_db()
 
     # 2. Iniciar Detector de Inteligencia Artificial Universal
@@ -29,13 +30,17 @@ def main():
     # 3. Iniciar Detector de Movimiento
     motion_detector = MotionDetector()
 
-    # 4. Iniciar Gestor de Eventos y Capturas
-    event_manager = EventManager(
-        cooldown_seconds=4.0,
+    # 4. Iniciar Gestor de Zonas de Seguridad
+    zone_manager = ZoneManager()
+
+    # 5. Iniciar Gestor de Alertas y Sonido
+    alert_manager = AlertManager(
+        cooldown_seconds=settings.ALERT_COOLDOWN_SECONDS,
+        enable_sound=settings.ENABLE_ALERT_SOUND,
         camera_id=settings.CAMERA_INDEX
     )
 
-    # 5. Iniciar Administrador de Cámara
+    # 6. Iniciar Administrador de Cámara
     cam = CameraManager(
         camera_index=settings.CAMERA_INDEX,
         target_fps=settings.TARGET_FPS
@@ -46,7 +51,8 @@ def main():
 
     only_moving_mode = settings.ONLY_MOVING_OBJECTS
 
-    print("📺 Transmisión con IA, Eventos y Base de Datos iniciada.")
+    print("📺 Sistema de Vigilancia Activo con ZONA RESTRINGIDA.")
+    print(f"⏱️ Cooldown de alertas configurado en: {settings.ALERT_COOLDOWN_SECONDS} segundos.")
     print("💡 Atajos de teclado:")
     print("   - 'm': Alternar entre 'Solo Objetos en Movimiento' y 'Todos los Objetos'")
     print("   - 'q' o ESC: Salir")
@@ -57,10 +63,10 @@ def main():
             if not success:
                 break
 
-            # 6. Actualizar mapa de movimiento
+            # 7. Actualizar mapa de movimiento
             _, scene_motion = motion_detector.update(frame)
 
-            # 7. Detectar objetos filtrando según movimiento
+            # 8. Detectar objetos
             detections, category_counts, inventory = detector.detect(
                 frame=frame,
                 motion_detector=motion_detector,
@@ -68,24 +74,31 @@ def main():
                 min_motion_ratio=settings.MIN_MOTION_RATIO
             )
 
-            # 8. Procesar eventos y guardar capturas en SQLite
-            event_alert = event_manager.process_detections(frame, detections)
+            # 9. Evaluar reglas de intrusión en Zonas Restringidas
+            active_zones, alert_banner = alert_manager.evaluate_rules(
+                frame=frame,
+                detections=detections,
+                zone_manager=zone_manager
+            )
 
-            # 9. Dibujar Bounding Boxes
+            # 10. Dibujar Zonas de Seguridad (brillan en rojo si hay intrusión)
+            frame = zone_manager.draw_zones(frame, active_alerts=active_zones)
+
+            # 11. Dibujar Bounding Boxes de los objetos
             frame = detector.draw_detections(frame, detections, only_moving=only_moving_mode)
 
-            # 10. Dibujar HUD, alertas y barra inferior
+            # 12. Dibujar HUD, banner de alerta e inventario
             frame = cam.draw_hud(
                 frame=frame,
                 category_counts=category_counts,
                 inventory=inventory,
                 only_moving=only_moving_mode,
                 scene_motion=scene_motion,
-                event_alert=event_alert
+                event_alert=alert_banner
             )
 
-            # 11. Mostrar ventana en pantalla
-            cv2.imshow(f"{settings.PROJECT_NAME} - Eventos & Base de Datos", frame)
+            # 13. Mostrar video en vivo
+            cv2.imshow(f"{settings.PROJECT_NAME} - Sistema de Seguridad y Zonas", frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == 27:
