@@ -83,9 +83,10 @@ def get_event_history(limit: int = 30):
 
 @router.post("/api/chat")
 def ask_ai(req: ChatRequest):
-    """Endpoint de interacción con el Asistente de IA."""
+    """Endpoint de interacción con el Asistente de IA (soporte multimodal con visión)."""
     scene_context = vision_service.get_stats()
-    response_text = ai_assistant.ask(req.message, scene_context)
+    latest_frame = vision_service.get_latest_jpeg()
+    response_text = ai_assistant.ask(req.message, scene_context, frame_bytes=latest_frame)
     return {
         "reply": response_text,
         "time": time.strftime("%H:%M:%S")
