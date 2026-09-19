@@ -1,12 +1,13 @@
 """
-Módulo de Detección de Objetos Universal (Vocabulario Abierto) para NEXUS VISION.
-Utiliza YOLO-World para reconocer cualquier objeto cotidiano (lapiceros, cuadernos, llaves, gafas, etc.).
+Módulo de Detección de Objetos Universal y Filtro de Movimiento para NEXUS VISION.
+Combina YOLO-World con el detector de movimiento para ignorar objetos estáticos e inmóviles.
 """
 from dataclasses import dataclass
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 import cv2
 import numpy as np
 from ultralytics import YOLO
+from app.detection.motion_detector import MotionDetector
 
 @dataclass
 class Detection:
@@ -18,11 +19,12 @@ class Detection:
     bbox: Tuple[int, int, int, int]  # (x1, y1, x2, y2)
     center: Tuple[int, int]          # (center_x, center_y)
     area: int                        # Área para dibujo en capas
+    is_moving: bool = False          # Indica si el objeto se está moviendo
+    motion_ratio: float = 0.0        # Nivel de movimiento detectado
 
 class ObjectDetector:
-    """Motor de inferencia universal con YOLO-World."""
+    """Motor de inferencia universal con soporte para filtrado de movimiento."""
 
-    # Catálogo de objetos cotidianos con su traducción y categoría
     ITEMS_CATALOG: List[Tuple[str, str, str]] = [
         # Humanos y accesorios
         ("person", "Persona", "person"),
@@ -103,24 +105,28 @@ class ObjectDetector:
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
 
-        print(f"🧠 Cargando modelo de Inteligencia Artificial Universal ({model_path})...")
+        print(f"🧠 Cargando modelo de Inteligencia Artificial ({model_path})...")
         self.model = YOLO(model_path)
 
-        # Configurar clases abiertas en el modelo
         self.english_classes = [item[0] for item in self.ITEMS_CATALOG]
         self.es_map = {item[0]: item[1] for item in self.ITEMS_CATALOG}
         self.category_map = {item[0]: item[2] for item in self.ITEMS_CATALOG}
 
         try:
             self.model.set_classes(self.english_classes)
-            print(f"✔️ {len(self.english_classes)} clases universales registradas (lapiceros, cuadernos, gafas, etc.).")
+            print(f"✔️ {len(self.english_classes)} clases universales con soporte de movimiento activo.")
         except Exception as e:
             print(f"⚠️ Nota de inicialización: {e}")
 
-    def detect(self, frame: np.ndarray) -> Tuple[List[Detection], Dict[str, int], Dict[str, int]]:
+    def detect(
+        self,
+        frame: np.ndarray,
+        motion_detector: Optional[MotionDetector] = None,
+        only_moving: bool = True,
+        min_motion_ratio: float = 0.02
+    ) -> Tuple[List[Detection], Dict[str, int], Dict[str, int]]:
         """
-        Inferencia de vocabulario abierto:
-        Detecta personas, objetos en mano, útiles de estudio, etc.
+        Ejecuta la inferencia y aplica el filtro de movimiento si only_moving es True.
         """
         results = self.model(
             frame,
@@ -142,12 +148,23 @@ class ObjectDetector:
             class_name_es = self.es_map.get(class_name_en, class_name_en.capitalize())
             category = self.category_map.get(class_name_en, "other")
 
-            category_counts[category] = category_counts.get(category, 0) + 1
-            item_inventory[class_name_es] = item_inventory.get(class_name_es, 0) + 1
-
             center_x = (x1 + x2) // 2
             center_y = (y1 + y2) // 2
             area = (x2 - x1) * (y2 - y1)
+
+            # Evaluar si el objeto se está moviendo usando el motion detector
+            is_moving = True
+            motion_ratio = 1.0
+
+            if motion_detector is not None:
+                is_moving, motion_ratio = motion_detector.is_bbox_moving((x1, y1, x2, y2), min_motion_ratio=min_motion_ratio)
+                
+                # Si el modo "solo en movimiento" está activo y el objeto está completamente quieto, lo ignoramos
+                if only_moving and not is_moving:
+                    continue
+
+            category_counts[category] = category_counts.get(category, 0) + 1
+            item_inventory[class_name_es] = item_inventory.get(class_name_es, 0) + 1
 
             detections.append(
                 Detection(
@@ -157,17 +174,19 @@ class ObjectDetector:
                     confidence=conf,
                     bbox=(x1, y1, x2, y2),
                     center=(center_x, center_y),
-                    area=area
+                    area=area,
+                    is_moving=is_moving,
+                    motion_ratio=motion_ratio
                 )
             )
 
-        # Ordenar por área: las personas se dibujan abajo y los objetos sostenidos encima
+        # Ordenar por área para dibujo en capas
         detections.sort(key=lambda d: d.area, reverse=True)
 
         return detections, category_counts, item_inventory
 
-    def draw_detections(self, frame: np.ndarray, detections: List[Detection]) -> np.ndarray:
-        """Dibuja bounding boxes estilizados y etiquetas en español."""
+    def draw_detections(self, frame: np.ndarray, detections: List[Detection], only_moving: bool = True) -> np.ndarray:
+        """Dibuja bounding boxes estilizados con indicador visual de movimiento."""
         for det in detections:
             x1, y1, x2, y2 = det.bbox
             color = self.COLORS.get(det.category, self.COLORS["other"])
@@ -178,7 +197,7 @@ class ObjectDetector:
             # 1. Rectángulo principal
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, border_thickness)
 
-            # 2. Esquinas reforzadas estilo HUD
+            # 2. Esquinas reforzadas
             line_len = max(6, min((x2 - x1) // 5, (y2 - y1) // 5, 20))
             corner_thick = 2 if is_person else 3
             cv2.line(frame, (x1, y1), (x1 + line_len, y1), color, corner_thick)
@@ -190,8 +209,9 @@ class ObjectDetector:
             cv2.line(frame, (x2, y2), (x2 - line_len, y2), color, corner_thick)
             cv2.line(frame, (x2, y2), (x2 - line_len, y2), color, corner_thick)
 
-            # 3. Etiqueta con porcentaje
-            label = f"{det.class_name_es.upper()} {int(det.confidence * 100)}%"
+            # 3. Etiqueta con indicador de movimiento
+            motion_tag = " [MOV]" if det.is_moving else ""
+            label = f"{det.class_name_es.upper()}{motion_tag} {int(det.confidence * 100)}%"
             (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
             
             label_y = max(h + 6, y1)

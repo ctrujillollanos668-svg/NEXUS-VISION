@@ -9,7 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "NEXUS VISION"
-    VERSION: str = "0.3.0"
+    VERSION: str = "0.3.1"
     DEBUG: bool = True
     
     # Configuración de Cámara
@@ -18,8 +18,12 @@ class Settings(BaseSettings):
     
     # Configuración de IA (YOLO-World de Vocabulario Abierto Universal)
     MODEL_PATH: str = str(BASE_DIR / "models" / "yolov8s-worldv2.pt")
-    CONFIDENCE_THRESHOLD: float = 0.20  # Óptimo para objetos pequeños como lapiceros, cuadernos, llaves
-    IOU_THRESHOLD: float = 0.65         # Permite detección de objetos dentro de personas y sobre mesas
+    CONFIDENCE_THRESHOLD: float = 0.20
+    IOU_THRESHOLD: float = 0.65
+    
+    # Filtro de Movimiento Inteligente
+    ONLY_MOVING_OBJECTS: bool = True     # Solo detectar objetos con movimiento activo
+    MIN_MOTION_RATIO: float = 0.02       # Umbral mínimo de píxeles en movimiento dentro del objeto
 
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),

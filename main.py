@@ -1,12 +1,13 @@
 """
 NEXUS VISION — Sistema de Cámara Inteligente con IA
-Detección universal de objetos con soporte para objetos superpuestos y en mano.
+Detección Universal con Filtro de Movimiento Inteligente.
 """
 import os
 import cv2
 from app.core.config import settings
 from app.camera.camera_manager import CameraManager
 from app.detection.detector import ObjectDetector
+from app.detection.motion_detector import MotionDetector
 
 def main():
     print("=" * 60)
@@ -16,14 +17,17 @@ def main():
     # Crear carpeta models si no existe
     os.makedirs("models", exist_ok=True)
 
-    # 1. Iniciar Detector de Inteligencia Artificial con soporte de superposición
+    # 1. Iniciar Detector de Inteligencia Artificial Universal
     detector = ObjectDetector(
         model_path=settings.MODEL_PATH,
         conf_threshold=settings.CONFIDENCE_THRESHOLD,
         iou_threshold=settings.IOU_THRESHOLD
     )
 
-    # 2. Iniciar Administrador de Cámara
+    # 2. Iniciar Detector de Movimiento
+    motion_detector = MotionDetector()
+
+    # 3. Iniciar Administrador de Cámara
     cam = CameraManager(
         camera_index=settings.CAMERA_INDEX,
         target_fps=settings.TARGET_FPS
@@ -32,8 +36,12 @@ def main():
     if not cam.start():
         return
 
-    print("📺 Transmisión con IA Universal iniciada.")
-    print("💡 Muestra objetos frente a tu pecho/cuerpo (celular, botella, taza, etc.)")
+    only_moving_mode = settings.ONLY_MOVING_OBJECTS
+
+    print("📺 Transmisión con IA y Filtro de Movimiento iniciada.")
+    print("💡 Atajos de teclado:")
+    print("   - 'm': Alternar entre 'Solo Objetos en Movimiento' y 'Todos los Objetos'")
+    print("   - 'q' o ESC: Salir")
 
     try:
         while cam.is_running:
@@ -41,21 +49,39 @@ def main():
             if not success:
                 break
 
-            # 3. Detectar objetos e inventario exacto en español
-            detections, category_counts, inventory = detector.detect(frame)
+            # 4. Actualizar mapa de movimiento
+            _, scene_motion = motion_detector.update(frame)
 
-            # 4. Dibujar Bounding Boxes en capas (objetos pequeños encima de personas)
-            frame = detector.draw_detections(frame, detections)
+            # 5. Detectar objetos filtrando según movimiento
+            detections, category_counts, inventory = detector.detect(
+                frame=frame,
+                motion_detector=motion_detector,
+                only_moving=only_moving_mode,
+                min_motion_ratio=settings.MIN_MOTION_RATIO
+            )
 
-            # 5. Dibujar HUD y barra inferior con inventario
-            frame = cam.draw_hud(frame, category_counts, inventory)
+            # 6. Dibujar Bounding Boxes
+            frame = detector.draw_detections(frame, detections, only_moving=only_moving_mode)
 
-            # 6. Mostrar el resultado en pantalla
-            cv2.imshow(f"{settings.PROJECT_NAME} - Reconocimiento Universal IA", frame)
+            # 7. Dibujar HUD y barra inferior
+            frame = cam.draw_hud(
+                frame=frame,
+                category_counts=category_counts,
+                inventory=inventory,
+                only_moving=only_moving_mode,
+                scene_motion=scene_motion
+            )
+
+            # 8. Mostrar ventana en pantalla
+            cv2.imshow(f"{settings.PROJECT_NAME} - IA & Movimiento", frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == 27:
                 break
+            elif key == ord('m') or key == ord('M'):
+                only_moving_mode = not only_moving_mode
+                mode_str = "SOLO EN MOVIMIENTO" if only_moving_mode else "TODOS LOS OBJETOS"
+                print(f"🔄 Modo cambiado: {mode_str}")
 
     except KeyboardInterrupt:
         print("\nDetención solicitada...")
