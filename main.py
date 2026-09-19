@@ -74,9 +74,8 @@ def get_dashboard():
 
 if __name__ == "__main__":
     uvicorn.run(
-        "main.py:app",
+        app,
         host=settings.HOST,
         port=settings.PORT,
-        log_level="info",
-        reload=False
+        log_level="info"
     )
