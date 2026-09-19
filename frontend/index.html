@@ -33,7 +33,7 @@
             </div>
         </header>
 
-        <!-- Banner de Alerta Crítica (Oculto por defecto) -->
+        <!-- Banner de Alerta Crítica -->
         <div class="alert-banner" id="globalAlertBanner">
             <span class="alert-icon">🚨</span>
             <span class="alert-text" id="globalAlertText">¡INTRUSIÓN EN ZONA RESTRINGIDA DETECTADA!</span>
@@ -81,7 +81,7 @@
                 </div>
             </section>
 
-            <!-- Columna Derecha: Tarjetas de Métricas e Inventario -->
+            <!-- Columna Derecha: Métricas, Inventario y Asistente de IA -->
             <aside class="sidebar-stats">
                 
                 <!-- Grid de Métricas Numéricas -->
@@ -119,6 +119,37 @@
                     <div class="inventory-tags" id="inventoryContainer">
                         <div class="empty-state">Buscando objetos frente a la cámara...</div>
                     </div>
+                </div>
+
+                <!-- Tarjeta de Chat / Asistente de IA Generativa -->
+                <div class="card ai-chat-card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">🤖</span>
+                            <span>ASISTENTE INTELIGENTE (NEXUS AI)</span>
+                        </div>
+                    </div>
+
+                    <!-- Sugerencias de Preguntas Rápidas -->
+                    <div class="quick-prompts">
+                        <button class="chip-btn" data-prompt="¿Qué estás viendo en este momento?">👁️ ¿Qué estás viendo?</button>
+                        <button class="chip-btn" data-prompt="¿Qué alertas ocurrieron recientemente?">🚨 ¿Hubo alertas?</button>
+                        <button class="chip-btn" data-prompt="Haz un resumen del estado de seguridad">📊 Resumen de seguridad</button>
+                    </div>
+
+                    <!-- Mensajes del Chat -->
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="chat-bubble ai">
+                            <div class="bubble-sender">🤖 Nexus AI</div>
+                            <div class="bubble-text">¡Hola! Soy tu asistente de seguridad. Pregúntame qué veo en vivo o consulta el historial de alertas.</div>
+                        </div>
+                    </div>
+
+                    <!-- Input de Pregunta -->
+                    <form class="chat-input-row" id="chatForm">
+                        <input type="text" id="chatInput" placeholder="Escribe tu pregunta a la IA..." autocomplete="off">
+                        <button type="submit" class="btn btn-primary btn-sm">Enviar</button>
+                    </form>
                 </div>
 
             </aside>

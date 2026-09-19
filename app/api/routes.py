@@ -3,16 +3,22 @@ Rutas y Endpoints Web para NEXUS VISION.
 """
 import time
 from typing import Generator
+from pydantic import BaseModel
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pathlib import Path
 
 from app.services.vision_service import VisionService
+from app.ai.ai_assistant import AIAssistant
 from app.database.database import SessionLocal
 from app.database.models import EventLog
 
 router = APIRouter()
 vision_service = VisionService.get_instance()
+ai_assistant = AIAssistant()
+
+class ChatRequest(BaseModel):
+    message: str
 
 def generate_video_stream() -> Generator[bytes, None, None]:
     """Generador de streaming MJPEG para navegadores web."""
@@ -74,6 +80,16 @@ def get_event_history(limit: int = 30):
         return []
     finally:
         db.close()
+
+@router.post("/api/chat")
+def ask_ai(req: ChatRequest):
+    """Endpoint de interacción con el Asistente de IA."""
+    scene_context = vision_service.get_stats()
+    response_text = ai_assistant.ask(req.message, scene_context)
+    return {
+        "reply": response_text,
+        "time": time.strftime("%H:%M:%S")
+    }
 
 @router.post("/api/toggle_motion")
 def toggle_motion():

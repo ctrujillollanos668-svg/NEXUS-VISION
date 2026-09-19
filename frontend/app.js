@@ -35,6 +35,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalInfo = document.getElementById('modalInfo');
     const modalClose = document.getElementById('modalClose');
 
+    // Elementos de Chat con IA
+    const chatMessages = document.getElementById('chatMessages');
+    const chatForm = document.getElementById('chatForm');
+    const chatInput = document.getElementById('chatInput');
+    const chipButtons = document.querySelectorAll('.chip-btn');
+
     // 1. Reloj en Vivo
     function updateClock() {
         const now = new Date();
@@ -50,20 +56,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.ok) return;
             const data = await res.json();
 
-            // Estado del sistema
             systemStatusText.textContent = data.status;
-
-            // FPS y Movimiento
             fpsVal.textContent = data.fps.toFixed(1);
             motionVal.textContent = `${data.scene_motion.toFixed(1)}%`;
 
-            // Métricas numéricas
             statPersons.textContent = data.categories.person || 0;
             statDevices.textContent = data.categories.device || 0;
             statItems.textContent = data.categories.item || 0;
             totalItemsCount.textContent = data.total_items_in_scene || 0;
 
-            // Botón de movimiento
             if (data.only_moving) {
                 motionBtnText.textContent = "Filtro: Solo Movimiento (ON)";
                 btnToggleMotion.className = "btn btn-primary";
@@ -72,7 +73,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 btnToggleMotion.className = "btn btn-secondary";
             }
 
-            // Botón de zonas de seguridad
             if (data.zones_enabled) {
                 zonesBtnText.textContent = "Zona Restringida (ON)";
                 btnToggleZones.className = "btn btn-secondary";
@@ -81,7 +81,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 btnToggleZones.className = "btn btn-outline";
             }
 
-            // Botón de sonido
             if (data.sound_enabled) {
                 soundBtnText.textContent = "Alarma Sonora (ON)";
                 btnToggleSound.className = "btn btn-secondary";
@@ -90,7 +89,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 btnToggleSound.className = "btn btn-outline";
             }
 
-            // Banner de Alerta Crítica
             if (data.active_alert) {
                 globalAlertText.textContent = data.active_alert;
                 globalAlertBanner.classList.add('active');
@@ -98,7 +96,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 globalAlertBanner.classList.remove('active');
             }
 
-            // Renderizar Inventario de Objetos en Vivo
             renderInventory(data.inventory);
 
         } catch (err) {
@@ -171,7 +168,74 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 4. Modal para ver fotos completas
+    // 4. Chat con Asistente de IA (/api/chat)
+    async function sendChatMessage(msg) {
+        if (!msg || msg.trim() === '') return;
+
+        // Agregar burbuja del usuario
+        appendChatBubble('user', 'Tú', msg);
+        chatInput.value = '';
+
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: msg })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                // Renderizar respuesta con markdown simple (negritas y saltos de línea)
+                let formatted = data.reply
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/\n/g, '<br>');
+                appendChatBubble('ai', '🤖 Nexus AI', formatted, true);
+            } else {
+                appendChatBubble('ai', '🤖 Nexus AI', 'Lo siento, ocurrió un error procesando tu consulta.');
+            }
+        } catch (err) {
+            appendChatBubble('ai', '🤖 Nexus AI', 'Error de conexión con el servidor.');
+        }
+    }
+
+    function appendChatBubble(type, sender, text, isHtml = false) {
+        const bubble = document.createElement('div');
+        bubble.className = `chat-bubble ${type}`;
+
+        const senderEl = document.createElement('div');
+        senderEl.className = 'bubble-sender';
+        senderEl.textContent = sender;
+
+        const textEl = document.createElement('div');
+        textEl.className = 'bubble-text';
+        if (isHtml) {
+            textEl.innerHTML = text;
+        } else {
+            textEl.textContent = text;
+        }
+
+        bubble.appendChild(senderEl);
+        bubble.appendChild(textEl);
+        chatMessages.appendChild(bubble);
+
+        // Auto-scroll al final del chat
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    chatForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        sendChatMessage(chatInput.value);
+    });
+
+    chipButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const prompt = btn.getAttribute('data-prompt');
+            sendChatMessage(prompt);
+        });
+    });
+
+    // 5. Modal de Capturas
     window.openSnapshotModal = function(url, desc, time) {
         modalImage.src = url;
         modalInfo.textContent = `${desc} — [${time}]`;
@@ -188,7 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 5. Botones de Control
+    // 6. Botones de Control
     btnToggleMotion.addEventListener('click', async () => {
         await fetch('/api/toggle_motion', { method: 'POST' });
         fetchStats();
@@ -212,7 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchEvents();
     });
 
-    // Intervalos de sondeo continuo
+    // Intervalos
     setInterval(fetchStats, 1500);
     setInterval(fetchEvents, 4000);
 
