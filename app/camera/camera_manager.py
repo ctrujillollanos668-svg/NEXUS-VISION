@@ -1,6 +1,6 @@
 """
 Módulo de Gestión de Cámara para NEXUS VISION.
-Controla la captura de video, cálculo de FPS, HUD superior con estado de movimiento y barra de inventario.
+Controla la captura de video, cálculo de FPS, HUD superior con estado de movimiento, alertas y barra de inventario.
 """
 import time
 from typing import Optional, Tuple, Dict
@@ -58,9 +58,10 @@ class CameraManager:
         category_counts: Optional[Dict[str, int]] = None,
         inventory: Optional[Dict[str, int]] = None,
         only_moving: bool = True,
-        scene_motion: float = 0.0
+        scene_motion: float = 0.0,
+        event_alert: Optional[str] = None
     ) -> np.ndarray:
-        """Dibuja el panel de control con estado de movimiento e inventario dinámico."""
+        """Dibuja el panel de control, alertas de eventos e inventario."""
         h, w, _ = frame.shape
         category_counts = category_counts or {"person": 0, "animal": 0, "vehicle": 0, "device": 0}
         inventory = inventory or {}
@@ -76,6 +77,10 @@ class CameraManager:
         # 3. Barra Inferior de Inventario
         cv2.rectangle(overlay, (10, h - 50), (w - 10, h - 10), (15, 15, 15), -1)
         
+        # 4. Banner Central de Alerta de Evento (si hay un evento recién registrado)
+        if event_alert:
+            cv2.rectangle(overlay, (w // 2 - 200, 15), (w // 2 + 200, 60), (0, 80, 0), -1)
+
         cv2.addWeighted(overlay, 0.78, frame, 0.22, 0, frame)
 
         # Bordes decorativos
@@ -83,6 +88,12 @@ class CameraManager:
         cv2.rectangle(frame, (10, 10), (370, 90), motion_border_color, 1)
         cv2.rectangle(frame, (w - 360, 10), (w - 10, 100), (0, 180, 255), 1)
         cv2.rectangle(frame, (10, h - 50), (w - 10, h - 10), (255, 180, 0), 1)
+
+        # Banner de alerta visual
+        if event_alert:
+            cv2.rectangle(frame, (w // 2 - 200, 15), (w // 2 + 200, 60), (0, 255, 100), 2)
+            cv2.putText(frame, event_alert, (w // 2 - 180, 45),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.60, (255, 255, 255), 2, cv2.LINE_AA)
 
         # Textos Panel Izquierdo
         status_mode = "[FILTRO: SOLO MOVIMIENTO]" if only_moving else "[MODO: TODOS LOS OBJETOS]"
