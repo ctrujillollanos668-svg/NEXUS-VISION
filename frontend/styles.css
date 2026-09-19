@@ -301,7 +301,7 @@ body {
    ========================================================================== */
 .controls-bar {
     display: flex;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
 }
 
@@ -309,7 +309,7 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 18px;
+    padding: 9px 16px;
     font-size: 13px;
     font-weight: 600;
     border-radius: var(--radius-md);
@@ -357,26 +357,56 @@ body {
     font-size: 12px;
 }
 
+/* Botón de Micrófono */
+.btn-mic {
+    background: rgba(157, 78, 221, 0.18);
+    border: 1px solid rgba(157, 78, 221, 0.4);
+    color: #fff;
+    padding: 8px 12px;
+    font-size: 15px;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    transition: all 0.2s ease;
+}
+
+.btn-mic:hover {
+    background: rgba(157, 78, 221, 0.35);
+    border-color: #d8b4fe;
+    transform: scale(1.05);
+}
+
+.btn-mic.listening {
+    background: rgba(255, 0, 85, 0.4);
+    border-color: #ff0055;
+    box-shadow: 0 0 15px rgba(255, 0, 85, 0.7);
+    animation: micPulse 1s infinite;
+}
+
+@keyframes micPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
 /* ==========================================================================
    Sidebar: Tarjetas de Métricas Numéricas
    ========================================================================== */
 .sidebar-stats {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 18px;
 }
 
 .stats-mini-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 14px;
+    gap: 12px;
 }
 
 .stat-card {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    padding: 14px;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -407,13 +437,13 @@ body {
 
 .stat-number {
     font-family: var(--font-mono);
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 800;
     color: var(--text-main);
 }
 
 .stat-footer {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-dim);
 }
 
@@ -423,8 +453,8 @@ body {
 .inventory-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    min-height: 40px;
+    gap: 6px;
+    min-height: 35px;
     align-content: flex-start;
 }
 
@@ -432,7 +462,7 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 5px 10px;
+    padding: 4px 8px;
     background: rgba(0, 242, 254, 0.08);
     border: 1px solid rgba(0, 242, 254, 0.25);
     border-radius: 20px;
@@ -445,7 +475,7 @@ body {
     background: var(--accent-cyan);
     color: #000;
     font-weight: 800;
-    font-size: 10px;
+    font-size: 9px;
     padding: 1px 5px;
     border-radius: 10px;
 }
@@ -458,13 +488,13 @@ body {
 }
 
 /* ==========================================================================
-   Asistente de IA Chat Card
+   Asistente de IA Chat Card con Voz
    ========================================================================== */
 .ai-chat-card {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    border-color: rgba(157, 78, 221, 0.3);
+    gap: 10px;
+    border-color: rgba(157, 78, 221, 0.35);
 }
 
 .quick-prompts {
@@ -494,9 +524,9 @@ body {
 .chat-messages {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    max-height: 180px;
-    min-height: 120px;
+    gap: 8px;
+    max-height: 160px;
+    min-height: 110px;
     overflow-y: auto;
     padding-right: 4px;
 }
@@ -510,7 +540,7 @@ body {
 }
 
 .chat-bubble {
-    padding: 10px 14px;
+    padding: 8px 12px;
     border-radius: var(--radius-md);
     font-size: 12px;
     line-height: 1.45;
@@ -535,7 +565,7 @@ body {
     font-weight: 700;
     font-size: 10px;
     color: #c084fc;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
     text-transform: uppercase;
 }
 
@@ -545,7 +575,8 @@ body {
 
 .chat-input-row {
     display: flex;
-    gap: 8px;
+    gap: 6px;
+    align-items: center;
 }
 
 .chat-input-row input {

@@ -70,9 +70,9 @@
                         <span class="btn-icon">🛡️</span>
                         <span id="zonesBtnText">Zona Restringida (ON)</span>
                     </button>
-                    <button class="btn btn-secondary" id="btnToggleSound">
-                        <span class="btn-icon">🔊</span>
-                        <span id="soundBtnText">Alarma Sonora (ON)</span>
+                    <button class="btn btn-secondary" id="btnToggleVoiceTTS">
+                        <span class="btn-icon">🗣️</span>
+                        <span id="voiceTTSBtnText">Voz de Nexus (ON)</span>
                     </button>
                     <button class="btn btn-outline" id="btnRefresh">
                         <span class="btn-icon">🔄</span>
@@ -81,7 +81,7 @@
                 </div>
             </section>
 
-            <!-- Columna Derecha: Métricas, Inventario y Asistente de IA -->
+            <!-- Columna Derecha: Métricas, Inventario y Asistente con Voz -->
             <aside class="sidebar-stats">
                 
                 <!-- Grid de Métricas Numéricas -->
@@ -121,12 +121,12 @@
                     </div>
                 </div>
 
-                <!-- Tarjeta de Chat / Asistente de IA Generativa -->
+                <!-- Tarjeta de Asistente de IA con Voz Bidireccional -->
                 <div class="card ai-chat-card">
                     <div class="card-header">
                         <div class="card-title">
                             <span class="card-icon">🤖</span>
-                            <span>ASISTENTE INTELIGENTE (NEXUS AI)</span>
+                            <span>ASISTENTE CON VOZ (NEXUS AI)</span>
                         </div>
                     </div>
 
@@ -141,13 +141,16 @@
                     <div class="chat-messages" id="chatMessages">
                         <div class="chat-bubble ai">
                             <div class="bubble-sender">🤖 Nexus AI</div>
-                            <div class="bubble-text">¡Hola! Soy tu asistente de seguridad. Pregúntame qué veo en vivo o consulta el historial de alertas.</div>
+                            <div class="bubble-text">¡Hola! Puedes hablarme por el micrófono 🎙️ o escribir tu pregunta. Te responderé con voz hablada.</div>
                         </div>
                     </div>
 
-                    <!-- Input de Pregunta -->
+                    <!-- Input de Pregunta con Botón de Micrófono -->
                     <form class="chat-input-row" id="chatForm">
-                        <input type="text" id="chatInput" placeholder="Escribe tu pregunta a la IA..." autocomplete="off">
+                        <button type="button" class="btn btn-mic" id="btnMic" title="Presiona para hablar por el micrófono">
+                            <span id="micIcon">🎙️</span>
+                        </button>
+                        <input type="text" id="chatInput" placeholder="Háblame con el micrófono o escribe aquí..." autocomplete="off">
                         <button type="submit" class="btn btn-primary btn-sm">Enviar</button>
                     </form>
                 </div>

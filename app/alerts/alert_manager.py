@@ -1,7 +1,6 @@
 """
 Gestor de Alertas y Reglas de Seguridad para NEXUS VISION.
-Controla el sonido de advertencia en Windows en segundo plano (sin congelar la cámara),
-el guardado de fotos espaciadas y el registro en la base de datos SQLite.
+Emite alertas sonoras, anuncios de voz hablados en Windows, capturas y registros en SQLite.
 """
 import os
 import time
@@ -12,7 +11,6 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-# Módulo de sonido nativo en Windows
 try:
     import winsound
     HAS_WINSOUND = True
@@ -23,6 +21,7 @@ from app.database.database import SessionLocal
 from app.database.models import EventLog
 from app.detection.detector import Detection
 from app.zones.zone_manager import ZoneManager, SecurityZone
+from app.voice.voice_engine import VoiceEngine
 
 class AlertManager:
     """Motor de evaluación de reglas de seguridad y despacho de alertas."""
@@ -45,13 +44,12 @@ class AlertManager:
         self.snapshots_dir = Path(__file__).resolve().parent.parent.parent / "storage" / "snapshots"
 
     def _play_alarm_sound(self):
-        """Emite un sonido de alarma en segundo plano para no congelar la cámara."""
+        """Emite un sonido táctico de alarma en segundo plano."""
         if not self.enable_sound or not HAS_WINSOUND:
             return
 
         def _sound_worker():
             try:
-                # Dos pitidos tácticos de advertencia (frecuencia 1600Hz y 1900Hz)
                 winsound.Beep(1600, 150)
                 time.sleep(0.05)
                 winsound.Beep(1900, 200)
@@ -80,35 +78,31 @@ class AlertManager:
     ) -> Tuple[List[str], Optional[str]]:
         """
         Evalúa si algún objeto o persona viola una zona de seguridad.
-        Retorna:
-        - Lista de IDs de zonas con alerta activa
-        - Texto del banner de alerta para la interfaz
         """
         current_time = time.time()
         h, w, _ = frame.shape
         active_zone_ids: Set[str] = set()
 
         for det in detections:
-            # Comprobar si este objeto intersecta alguna zona
             violated_zones = zone_manager.check_intrusions(det.bbox, w, h)
 
             for zone in violated_zones:
                 active_zone_ids.add(zone.id)
 
-                # Comprobar si ha pasado el tiempo espaciado (cooldown) para disparar la alerta completa
                 if current_time - self.last_alert_time >= self.cooldown_seconds:
                     self.last_alert_time = current_time
 
                     event_type = f"INTRUSION_{zone.name.replace(' ', '_').upper()}"
                     description = f"Alerta de seguridad: {det.class_name_es} detectado dentro de {zone.name}"
 
-                    # 1. Reproducir sonido de alarma
+                    # 1. Alarma sonora y voz hablada
                     self._play_alarm_sound()
+                    VoiceEngine.get_instance().speak(f"Alerta. Se detectó {det.class_name_es} en zona restringida.")
 
-                    # 2. Guardar captura fotográfica de la intrusión
+                    # 2. Guardar captura fotográfica
                     snapshot_path = self._save_alert_snapshot(frame, zone.name, det.class_name_es)
 
-                    # 3. Registrar Alerta Crítica en SQLite
+                    # 3. Registrar en SQLite
                     db = SessionLocal()
                     try:
                         event = EventLog(
@@ -136,7 +130,6 @@ class AlertManager:
                     finally:
                         db.close()
 
-        # Mantener visible el banner de advertencia si no ha expirado
         banner_text = None
         if self.active_alert_banner and current_time < self.banner_expire_time:
             banner_text = self.active_alert_banner

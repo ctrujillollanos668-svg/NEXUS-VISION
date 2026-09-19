@@ -1,5 +1,6 @@
 /**
  * NEXUS VISION — Controlador Frontend del Dashboard
+ * Soporte de Voz Bidireccional: Reconocimiento por Micrófono y Respuestas Habladas.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -22,8 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const motionBtnText = document.getElementById('motionBtnText');
     const btnToggleZones = document.getElementById('btnToggleZones');
     const zonesBtnText = document.getElementById('zonesBtnText');
-    const btnToggleSound = document.getElementById('btnToggleSound');
-    const soundBtnText = document.getElementById('soundBtnText');
+    const btnToggleVoiceTTS = document.getElementById('btnToggleVoiceTTS');
+    const voiceTTSBtnText = document.getElementById('voiceTTSBtnText');
     const btnRefresh = document.getElementById('btnRefresh');
     const btnReloadEvents = document.getElementById('btnReloadEvents');
 
@@ -35,11 +36,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalInfo = document.getElementById('modalInfo');
     const modalClose = document.getElementById('modalClose');
 
-    // Elementos de Chat con IA
+    // Elementos de Chat con IA y Voz
     const chatMessages = document.getElementById('chatMessages');
     const chatForm = document.getElementById('chatForm');
     const chatInput = document.getElementById('chatInput');
     const chipButtons = document.querySelectorAll('.chip-btn');
+    const btnMic = document.getElementById('btnMic');
+    const micIcon = document.getElementById('micIcon');
+
+    // Estado de Voz
+    let voiceOutputEnabled = true;
+    let recognition = null;
+    let isListening = false;
 
     // 1. Reloj en Vivo
     function updateClock() {
@@ -49,7 +57,116 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(updateClock, 1000);
     updateClock();
 
-    // 2. Obtener Métricas en Vivo (/api/stats)
+    // 2. Inicializar Reconocimiento de Voz (Web Speech API)
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.lang = 'es-ES';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        recognition.onstart = () => {
+            isListening = true;
+            btnMic.classList.add('listening');
+            micIcon.textContent = '🔴';
+            chatInput.placeholder = 'Escuchando tu voz... habla ahora';
+        };
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            chatInput.value = transcript;
+            sendChatMessage(transcript);
+        };
+
+        recognition.onerror = (event) => {
+            console.warn('Error de reconocimiento de voz:', event.error);
+            stopListening();
+        };
+
+        recognition.onend = () => {
+            stopListening();
+        };
+    } else {
+        btnMic.style.display = 'none';
+        console.warn('El navegador no soporta reconocimiento de voz nativo.');
+    }
+
+    function stopListening() {
+        isListening = false;
+        btnMic.classList.remove('listening');
+        micIcon.textContent = '🎙️';
+        chatInput.placeholder = 'Háblame con el micrófono o escribe aquí...';
+    }
+
+    btnMic.addEventListener('click', () => {
+        if (!recognition) return;
+        if (isListening) {
+            recognition.stop();
+        } else {
+            try {
+                recognition.start();
+            } catch (err) {
+                recognition.stop();
+            }
+        }
+    });
+
+    // 3. Síntesis de Voz Hablada (Text-to-Speech)
+    function speakText(text) {
+        if (!voiceOutputEnabled || !('speechSynthesis' in window)) return;
+
+        // Cancelar cualquier audio anterior
+        window.speechSynthesis.cancel();
+
+        // Limpiar formato markdown y emojis para una lectura natural
+        const clean = text
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/\*(.*?)\*/g, '$1')
+            .replace(/#/g, '')
+            .replace(/[-_]/g, ' ')
+            .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
+            .replace(/[\u{2600}-\u{26FF}]/gu, '')
+            .replace(/[\u{2700}-\u{27BF}]/gu, '')
+            .trim();
+
+        if (!clean) return;
+
+        const utterance = new SpeechSynthesisUtterance(clean);
+        utterance.lang = 'es-ES';
+        utterance.rate = 1.05;
+        utterance.pitch = 1.0;
+
+        // Buscar voz en español
+        const voices = window.speechSynthesis.getVoices();
+        const esVoice = voices.find(v => v.lang.startsWith('es') || v.lang.includes('es-'));
+        if (esVoice) {
+            utterance.voice = esVoice;
+        }
+
+        window.speechSynthesis.speak(utterance);
+    }
+
+    // Asegurar carga de voces
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = () => {
+            window.speechSynthesis.getVoices();
+        };
+    }
+
+    btnToggleVoiceTTS.addEventListener('click', () => {
+        voiceOutputEnabled = !voiceOutputEnabled;
+        if (voiceOutputEnabled) {
+            voiceTTSBtnText.textContent = "Voz de Nexus (ON)";
+            btnToggleVoiceTTS.className = "btn btn-secondary";
+            speakText("Voz de Nexus activada.");
+        } else {
+            voiceTTSBtnText.textContent = "Voz de Nexus (OFF)";
+            btnToggleVoiceTTS.className = "btn btn-outline";
+            window.speechSynthesis.cancel();
+        }
+    });
+
+    // 4. Métricas en Vivo (/api/stats)
     async function fetchStats() {
         try {
             const res = await fetch('/api/stats');
@@ -79,14 +196,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 zonesBtnText.textContent = "Zona Restringida (OFF)";
                 btnToggleZones.className = "btn btn-outline";
-            }
-
-            if (data.sound_enabled) {
-                soundBtnText.textContent = "Alarma Sonora (ON)";
-                btnToggleSound.className = "btn btn-secondary";
-            } else {
-                soundBtnText.textContent = "Alarma Sonora (SILENCIADA)";
-                btnToggleSound.className = "btn btn-outline";
             }
 
             if (data.active_alert) {
@@ -121,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
         inventoryContainer.innerHTML = html;
     }
 
-    // 3. Obtener Historial de Eventos de la Base de Datos (/api/events)
+    // 5. Historial de Eventos (/api/events)
     async function fetchEvents() {
         try {
             const res = await fetch('/api/events');
@@ -168,11 +277,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 4. Chat con Asistente de IA (/api/chat)
+    // 6. Chat con IA y Respuesta Hablada
     async function sendChatMessage(msg) {
         if (!msg || msg.trim() === '') return;
 
-        // Agregar burbuja del usuario
         appendChatBubble('user', 'Tú', msg);
         chatInput.value = '';
 
@@ -185,12 +293,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (res.ok) {
                 const data = await res.json();
-                // Renderizar respuesta con markdown simple (negritas y saltos de línea)
                 let formatted = data.reply
                     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                     .replace(/\*(.*?)\*/g, '<em>$1</em>')
                     .replace(/\n/g, '<br>');
                 appendChatBubble('ai', '🤖 Nexus AI', formatted, true);
+
+                // ¡HABLAR LA RESPUESTA!
+                speakText(data.reply);
+
             } else {
                 appendChatBubble('ai', '🤖 Nexus AI', 'Lo siento, ocurrió un error procesando tu consulta.');
             }
@@ -219,7 +330,6 @@ document.addEventListener('DOMContentLoaded', () => {
         bubble.appendChild(textEl);
         chatMessages.appendChild(bubble);
 
-        // Auto-scroll al final del chat
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
@@ -235,7 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 5. Modal de Capturas
+    // 7. Modal de Capturas
     window.openSnapshotModal = function(url, desc, time) {
         modalImage.src = url;
         modalInfo.textContent = `${desc} — [${time}]`;
@@ -252,7 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 6. Botones de Control
+    // 8. Botones de Control
     btnToggleMotion.addEventListener('click', async () => {
         await fetch('/api/toggle_motion', { method: 'POST' });
         fetchStats();
@@ -260,11 +370,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnToggleZones.addEventListener('click', async () => {
         await fetch('/api/toggle_zones', { method: 'POST' });
-        fetchStats();
-    });
-
-    btnToggleSound.addEventListener('click', async () => {
-        await fetch('/api/toggle_sound', { method: 'POST' });
         fetchStats();
     });
 
@@ -276,7 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchEvents();
     });
 
-    // Intervalos
+    // Intervalos de sondeo
     setInterval(fetchStats, 1500);
     setInterval(fetchEvents, 4000);
 
