@@ -41,7 +41,7 @@ class ZoneManager:
 
     def __init__(self):
         self.zones: Dict[str, SecurityZone] = {}
-        self.enabled: bool = True
+        self.enabled: bool = False
         self._load_default_zones()
 
     def _load_default_zones(self):

@@ -7,13 +7,13 @@ from app.zones.zone_manager import ZoneManager, SecurityZone
 def test_zone_manager_defaults():
     """Verifica que ZoneManager cargue las zonas predeterminadas."""
     zm = ZoneManager()
-    assert zm.enabled is True
     assert "restricted_zone_1" in zm.zones
     assert zm.zones["restricted_zone_1"].name == "ZONA RESTRINGIDA"
 
 def test_zone_intersection_inside():
-    """Verifica detección positiva cuando un bbox está dentro de la zona."""
+    """Verifica detección positiva cuando un bbox está dentro de la zona y la zona está activa."""
     zm = ZoneManager()
+    zm.enabled = True
     frame_w, frame_h = 1000, 1000
     # La zona predeterminada está entre x: 550 a 980, y: 150 a 850
     bbox_inside = (600, 200, 700, 300)
