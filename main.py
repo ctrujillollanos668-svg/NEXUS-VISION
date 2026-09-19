@@ -1,6 +1,6 @@
 """
 NEXUS VISION — Sistema de Cámara Inteligente con IA
-Fase 3 & 4: Inferencia en tiempo real, Bounding Boxes y Contadores.
+Detección universal de objetos, traducción al español e inventario en tiempo real.
 """
 import os
 import cv2
@@ -16,7 +16,7 @@ def main():
     # Crear carpeta models si no existe
     os.makedirs("models", exist_ok=True)
 
-    # 1. Iniciar Detector de Inteligencia Artificial
+    # 1. Iniciar Detector de Inteligencia Artificial con 80 clases en Español
     detector = ObjectDetector(
         model_path=settings.MODEL_PATH,
         conf_threshold=settings.CONFIDENCE_THRESHOLD
@@ -31,7 +31,8 @@ def main():
     if not cam.start():
         return
 
-    print("📺 Transmisión con IA iniciada. Muestra objetos o colócate frente a la cámara.")
+    print("📺 Transmisión con IA Universal iniciada.")
+    print("💡 Muestra cualquier objeto cotidiano (celular, botella, taza, libro, tijeras, etc.)")
 
     try:
         while cam.is_running:
@@ -39,17 +40,17 @@ def main():
             if not success:
                 break
 
-            # 3. Detectar objetos con la IA
-            detections, counts = detector.detect(frame)
+            # 3. Detectar objetos, categorías e inventario exacto en español
+            detections, category_counts, inventory = detector.detect(frame)
 
-            # 4. Dibujar Bounding Boxes en los objetos detectados
+            # 4. Dibujar Bounding Boxes y etiquetas en español
             frame = detector.draw_detections(frame, detections)
 
-            # 5. Dibujar HUD con FPS y Contadores
-            frame = cam.draw_hud(frame, counts)
+            # 5. Dibujar HUD y barra inferior con inventario
+            frame = cam.draw_hud(frame, category_counts, inventory)
 
             # 6. Mostrar el resultado en pantalla
-            cv2.imshow(f"{settings.PROJECT_NAME} - IA en Tiempo Real", frame)
+            cv2.imshow(f"{settings.PROJECT_NAME} - Reconocimiento Universal IA", frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == 27:

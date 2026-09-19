@@ -1,5 +1,6 @@
 """
 Módulo de Gestión de Cámara para NEXUS VISION.
+Controla la captura de video, cálculo de FPS, HUD superior y barra de inventario de objetos en escena.
 """
 import time
 from typing import Optional, Tuple, Dict
@@ -51,40 +52,61 @@ class CameraManager:
 
         return True, frame
 
-    def draw_hud(self, frame: np.ndarray, counts: Optional[Dict[str, int]] = None) -> np.ndarray:
-        """Dibuja el panel de control superior y contadores de IA en tiempo real."""
+    def draw_hud(self, frame: np.ndarray, category_counts: Optional[Dict[str, int]] = None, inventory: Optional[Dict[str, int]] = None) -> np.ndarray:
+        """Dibuja el panel de control superior y la barra inferior de inventario de objetos."""
         h, w, _ = frame.shape
-        counts = counts or {"person": 0, "animal": 0, "vehicle": 0, "device": 0, "other": 0}
+        category_counts = category_counts or {"person": 0, "animal": 0, "vehicle": 0, "device": 0}
+        inventory = inventory or {}
 
-        # 1. Panel superior izquierdo (Estado y FPS)
         overlay = frame.copy()
-        cv2.rectangle(overlay, (10, 10), (330, 85), (20, 20, 20), -1)
-        # 2. Panel superior derecho (Contadores de Objetos)
-        cv2.rectangle(overlay, (w - 360, 10), (w - 10, 105), (20, 20, 20), -1)
+
+        # 1. Panel Superior Izquierdo (Estado del Sistema)
+        cv2.rectangle(overlay, (10, 10), (330, 85), (18, 18, 18), -1)
         
-        cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
+        # 2. Panel Superior Derecho (Contador Rápido por Categoría)
+        cv2.rectangle(overlay, (w - 360, 10), (w - 10, 100), (18, 18, 18), -1)
+
+        # 3. Barra Inferior de Inventario (Muestra TODO lo que hay en la escena)
+        cv2.rectangle(overlay, (10, h - 50), (w - 10, h - 10), (15, 15, 15), -1)
+        
+        cv2.addWeighted(overlay, 0.78, frame, 0.22, 0, frame)
 
         # Bordes decorativos
         cv2.rectangle(frame, (10, 10), (330, 85), (0, 220, 100), 1)
-        cv2.rectangle(frame, (w - 360, 10), (w - 10, 105), (0, 180, 255), 1)
+        cv2.rectangle(frame, (w - 360, 10), (w - 10, 100), (0, 180, 255), 1)
+        cv2.rectangle(frame, (10, h - 50), (w - 10, h - 10), (255, 180, 0), 1)
 
-        # Texto HUD izquierdo
-        cv2.putText(frame, "NEXUS VISION | IA ACTIVA", (20, 32),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 180), 2)
+        # Textos Panel Izquierdo
+        cv2.putText(frame, "NEXUS VISION | RECONOCIMIENTO IA", (20, 32),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 255, 180), 2)
         cv2.putText(frame, f"FPS: {self.fps:.1f} | Cam: {self.camera_index} ({w}x{h})", (20, 54),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
         cv2.putText(frame, "Presiona 'q' o 'ESC' para salir", (20, 74),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.40, (180, 180, 180), 1)
 
-        # Texto HUD derecho (Contadores)
-        cv2.putText(frame, "OBJETOS DETECTADOS EN VIVO", (w - 345, 30),
+        # Textos Panel Derecho (Categorías)
+        cv2.putText(frame, "RESUMEN DE CATEGORIAS", (w - 345, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 200, 255), 1)
-        cv2.putText(frame, f"Personas:     {counts['person']}", (w - 345, 50),
+        cv2.putText(frame, f"Personas:    {category_counts.get('person', 0)}", (w - 345, 48),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 140, 0), 1)
-        cv2.putText(frame, f"Dispositivos: {counts['device']}", (w - 345, 68),
+        cv2.putText(frame, f"Dispositivos: {category_counts.get('device', 0)}", (w - 345, 66),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 128), 1)
-        cv2.putText(frame, f"Animales: {counts['animal']} | Autos: {counts['vehicle']}", (w - 345, 88),
+        cv2.putText(frame, f"Animales: {category_counts.get('animal', 0)} | Autos: {category_counts.get('vehicle', 0)}", (w - 345, 84),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+
+        # Textos Barra Inferior (Inventario exacto de lo que tienes en pantalla)
+        if inventory:
+            items_str = " | ".join([f"{name} ({qty})" for name, qty in inventory.items()])
+            inventory_text = f"EN ESCENA ({sum(inventory.values())} obj): {items_str}"
+        else:
+            inventory_text = "EN ESCENA: Esperando deteccion de objetos..."
+
+        # Limitar longitud si la cadena es muy larga para que no se salga de la pantalla
+        if len(inventory_text) > 85:
+            inventory_text = inventory_text[:82] + "..."
+
+        cv2.putText(frame, inventory_text, (25, h - 24),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.50, (255, 255, 255), 1, cv2.LINE_AA)
 
         return frame
 
