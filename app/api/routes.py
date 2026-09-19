@@ -2,7 +2,7 @@
 Rutas y Endpoints Web para NEXUS VISION.
 """
 import time
-from typing import Generator
+from typing import Generator, Any, Union
 from pydantic import BaseModel
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
