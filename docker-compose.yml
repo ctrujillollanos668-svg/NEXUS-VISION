@@ -1,0 +1,31 @@
+# ==============================================================================
+# NEXUS VISION — Orquestación de Servicios con Docker Compose
+# ==============================================================================
+services:
+  nexus-vision:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nexus_vision_server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - CAMERA_INDEX=0
+      - TARGET_FPS=30
+      - CONFIDENCE_THRESHOLD=0.20
+      - IOU_THRESHOLD=0.65
+      - ONLY_MOVING_OBJECTS=true
+      - ENABLE_ALERT_SOUND=true
+      - ALERT_COOLDOWN_SECONDS=15
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      # Persistencia de base de datos SQLite y capturas de seguridad
+      - ./storage:/app/storage
+      # Modelos descargados
+      - ./models:/app/models
+    # En Linux, para dar acceso directo a la cámara web del host:
+    # devices:
+    #   - "/dev/video0:/dev/video0"
