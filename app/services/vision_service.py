@@ -52,6 +52,7 @@ class VisionService:
 
         # Métricas para el Dashboard
         self.current_fps: float = 0.0
+        self.current_inference_ms: float = 0.0
         self.current_scene_motion: float = 0.0
         self.current_category_counts: Dict[str, int] = {}
         self.current_inventory: Dict[str, int] = {}
@@ -116,6 +117,7 @@ class VisionService:
                 with self._lock:
                     self._latest_jpeg = buffer.tobytes()
                     self.current_fps = self.cam.fps
+                    self.current_inference_ms = self.detector.last_inference_ms
                     self.current_scene_motion = scene_motion
                     self.current_category_counts = category_counts
                     self.current_inventory = inventory
@@ -133,6 +135,8 @@ class VisionService:
             return {
                 "status": "ONLINE" if self.is_running else "OFFLINE",
                 "fps": round(self.current_fps, 1),
+                "inference_ms": round(self.current_inference_ms, 1),
+                "device_name": self.detector.device_name,
                 "scene_motion": round(self.current_scene_motion, 1),
                 "only_moving": self.only_moving,
                 "sound_enabled": self.alert_manager.enable_sound,

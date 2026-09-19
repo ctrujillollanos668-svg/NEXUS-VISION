@@ -2,10 +2,12 @@
 Módulo de Detección de Objetos Universal y Filtro de Movimiento para NEXUS VISION.
 Combina YOLO-World con el detector de movimiento para ignorar objetos estáticos e inmóviles.
 """
+import time
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
 import cv2
 import numpy as np
+import torch
 from ultralytics import YOLO
 from app.detection.motion_detector import MotionDetector
 
@@ -23,7 +25,7 @@ class Detection:
     motion_ratio: float = 0.0        # Nivel de movimiento detectado
 
 class ObjectDetector:
-    """Motor de inferencia universal con soporte para filtrado de movimiento."""
+    """Motor de inferencia universal con aceleración de hardware y soporte de movimiento."""
 
     ITEMS_CATALOG: List[Tuple[str, str, str]] = [
         # Humanos y accesorios
@@ -104,9 +106,26 @@ class ObjectDetector:
         self.model_path = model_path
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
+        self.last_inference_ms: float = 0.0
+
+        # Detección de Aceleración de Hardware
+        if torch.cuda.is_available():
+            self.device = "cuda:0"
+            gpu_name = torch.cuda.get_device_name(0)
+            self.device_name = f"GPU: {gpu_name}"
+            print(f"⚡ Aceleración por Hardware activada: {self.device_name}")
+        else:
+            self.device = "cpu"
+            num_threads = torch.get_num_threads()
+            self.device_name = f"CPU (Multihilo {num_threads}T)"
+            print(f"⚙️ Procesamiento en CPU optimizado: {self.device_name}")
 
         print(f"🧠 Cargando modelo de Inteligencia Artificial ({model_path})...")
         self.model = YOLO(model_path)
+        try:
+            self.model.to(self.device)
+        except Exception:
+            pass
 
         self.english_classes = [item[0] for item in self.ITEMS_CATALOG]
         self.es_map = {item[0]: item[1] for item in self.ITEMS_CATALOG}
@@ -126,15 +145,20 @@ class ObjectDetector:
         min_motion_ratio: float = 0.02
     ) -> Tuple[List[Detection], Dict[str, int], Dict[str, int]]:
         """
-        Ejecuta la inferencia y aplica el filtro de movimiento si only_moving es True.
+        Ejecuta la inferencia optimizada y aplica el filtro de movimiento si only_moving es True.
         """
+        t_start = time.perf_counter()
+
         results = self.model(
             frame,
             conf=self.conf_threshold,
             iou=self.iou_threshold,
             agnostic_nms=False,
+            device=self.device,
             verbose=False
         )[0]
+
+        self.last_inference_ms = (time.perf_counter() - t_start) * 1000.0
 
         detections: List[Detection] = []
         category_counts: Dict[str, int] = {"person": 0, "animal": 0, "vehicle": 0, "device": 0, "furniture": 0, "item": 0, "other": 0}

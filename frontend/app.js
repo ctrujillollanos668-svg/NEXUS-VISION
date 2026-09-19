@@ -15,7 +15,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnScanCams = document.getElementById('btnScanCams');
 
     const fpsVal = document.getElementById('fpsVal');
+    const inferVal = document.getElementById('inferVal');
     const motionVal = document.getElementById('motionVal');
+    const deviceVal = document.getElementById('deviceVal');
     const statPersons = document.getElementById('statPersons');
     const statDevices = document.getElementById('statDevices');
     const statItems = document.getElementById('statItems');
@@ -166,6 +168,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             systemStatusText.textContent = data.status;
             fpsVal.textContent = data.fps.toFixed(1);
+            if (inferVal && data.inference_ms !== undefined) inferVal.textContent = data.inference_ms.toFixed(1);
+            if (deviceVal && data.device_name) deviceVal.textContent = data.device_name.startsWith('GPU') ? '⚡ GPU' : 'CPU';
             motionVal.textContent = `${data.scene_motion.toFixed(1)}%`;
 
             statPersons.textContent = data.categories.person || 0;
