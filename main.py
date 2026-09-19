@@ -1,6 +1,6 @@
 """
 NEXUS VISION — Sistema de Cámara Inteligente con IA
-Detección universal de objetos, traducción al español e inventario en tiempo real.
+Detección universal de objetos con soporte para objetos superpuestos y en mano.
 """
 import os
 import cv2
@@ -16,10 +16,11 @@ def main():
     # Crear carpeta models si no existe
     os.makedirs("models", exist_ok=True)
 
-    # 1. Iniciar Detector de Inteligencia Artificial con 80 clases en Español
+    # 1. Iniciar Detector de Inteligencia Artificial con soporte de superposición
     detector = ObjectDetector(
         model_path=settings.MODEL_PATH,
-        conf_threshold=settings.CONFIDENCE_THRESHOLD
+        conf_threshold=settings.CONFIDENCE_THRESHOLD,
+        iou_threshold=settings.IOU_THRESHOLD
     )
 
     # 2. Iniciar Administrador de Cámara
@@ -32,7 +33,7 @@ def main():
         return
 
     print("📺 Transmisión con IA Universal iniciada.")
-    print("💡 Muestra cualquier objeto cotidiano (celular, botella, taza, libro, tijeras, etc.)")
+    print("💡 Muestra objetos frente a tu pecho/cuerpo (celular, botella, taza, etc.)")
 
     try:
         while cam.is_running:
@@ -40,10 +41,10 @@ def main():
             if not success:
                 break
 
-            # 3. Detectar objetos, categorías e inventario exacto en español
+            # 3. Detectar objetos e inventario exacto en español
             detections, category_counts, inventory = detector.detect(frame)
 
-            # 4. Dibujar Bounding Boxes y etiquetas en español
+            # 4. Dibujar Bounding Boxes en capas (objetos pequeños encima de personas)
             frame = detector.draw_detections(frame, detections)
 
             # 5. Dibujar HUD y barra inferior con inventario

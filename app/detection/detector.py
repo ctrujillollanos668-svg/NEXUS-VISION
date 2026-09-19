@@ -1,6 +1,6 @@
 """
 Módulo de Detección de Objetos con IA para NEXUS VISION.
-Utiliza YOLOv8 para procesar fotogramas, identificar 80 clases de objetos y traducirlas al español.
+Optimizado para detección de objetos sostenidos en mano y solapados dentro del cuerpo de personas.
 """
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
@@ -17,11 +17,11 @@ class Detection:
     confidence: float
     bbox: Tuple[int, int, int, int]  # (x1, y1, x2, y2)
     center: Tuple[int, int]          # (center_x, center_y)
+    area: int                        # Área en píxeles para ordenar capas
 
 class ObjectDetector:
     """Motor de inferencia y traducción de Visión Artificial."""
 
-    # Traducción completa de las 80 clases COCO de YOLO al Español
     COCO_SPANISH_MAP: Dict[str, str] = {
         "person": "Persona",
         "bicycle": "Bicicleta",
@@ -105,7 +105,6 @@ class ObjectDetector:
         "toothbrush": "Cepillo de Dientes"
     }
 
-    # Categorización general para métricas
     CATEGORIES: Dict[str, List[str]] = {
         "person": ["person"],
         "animal": ["dog", "cat", "bird", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe"],
@@ -115,7 +114,6 @@ class ObjectDetector:
         "item": ["bottle", "cup", "book", "backpack", "handbag", "umbrella", "scissors", "toothbrush", "fork", "knife", "spoon", "bowl"]
     }
 
-    # Colores por categoría (BGR)
     COLORS: Dict[str, Tuple[int, int, int]] = {
         "person": (255, 140, 0),      # Azul / Cyan
         "animal": (0, 165, 255),      # Naranja
@@ -126,15 +124,15 @@ class ObjectDetector:
         "other": (200, 200, 200)      # Gris claro
     }
 
-    def __init__(self, model_path: str = "models/yolov8n.pt", conf_threshold: float = 0.35):
+    def __init__(self, model_path: str = "models/yolov8n.pt", conf_threshold: float = 0.25, iou_threshold: float = 0.70):
         self.model_path = model_path
         self.conf_threshold = conf_threshold
+        self.iou_threshold = iou_threshold
         print(f"🧠 Cargando modelo de Inteligencia Artificial ({model_path})...")
         self.model = YOLO(model_path)
-        print("✔️ Modelo de IA cargado y listo para detección universal.")
+        print("✔️ Modelo de IA configurado con soporte para objetos superpuestos y en mano.")
 
     def _get_category(self, class_name: str) -> str:
-        """Determina la categoría general a la que pertenece el objeto."""
         for cat, items in self.CATEGORIES.items():
             if class_name in items:
                 return cat
@@ -142,12 +140,18 @@ class ObjectDetector:
 
     def detect(self, frame: np.ndarray) -> Tuple[List[Detection], Dict[str, int], Dict[str, int]]:
         """
-        Ejecuta la inferencia sobre un frame y retorna:
-        - Lista de detecciones individuales
-        - Conteo general por categoría
-        - Inventario exacto por nombre en español (ej: {"Celular": 1, "Taza / Vaso": 2})
+        Inferencia optimizada:
+        - iou=0.70 permite que objetos pequeños dentro de personas no sean suprimidos.
+        - agnostic_nms=False asegura que distintas clases puedan solaparse.
         """
-        results = self.model(frame, conf=self.conf_threshold, verbose=False)[0]
+        results = self.model(
+            frame,
+            conf=self.conf_threshold,
+            iou=self.iou_threshold,
+            agnostic_nms=False,
+            verbose=False
+        )[0]
+
         detections: List[Detection] = []
         category_counts: Dict[str, int] = {"person": 0, "animal": 0, "vehicle": 0, "device": 0, "furniture": 0, "item": 0, "other": 0}
         item_inventory: Dict[str, int] = {}
@@ -165,6 +169,7 @@ class ObjectDetector:
 
             center_x = (x1 + x2) // 2
             center_y = (y1 + y2) // 2
+            area = (x2 - x1) * (y2 - y1)
 
             detections.append(
                 Detection(
@@ -173,37 +178,51 @@ class ObjectDetector:
                     category=category,
                     confidence=conf,
                     bbox=(x1, y1, x2, y2),
-                    center=(center_x, center_y)
+                    center=(center_x, center_y),
+                    area=area
                 )
             )
+
+        # Ordenar por área de mayor a menor:
+        # Los rectángulos grandes (personas/muebles) se procesan primero,
+        # y los pequeños (celulares, tazas, botellas) se dibujan encima sin ser tapados.
+        detections.sort(key=lambda d: d.area, reverse=True)
 
         return detections, category_counts, item_inventory
 
     def draw_detections(self, frame: np.ndarray, detections: List[Detection]) -> np.ndarray:
-        """Dibuja bounding boxes estilizados y etiquetas en español."""
+        """Dibuja en capas con grosor adaptable según el tamaño del objeto."""
         for det in detections:
             x1, y1, x2, y2 = det.bbox
             color = self.COLORS.get(det.category, self.COLORS["other"])
 
-            # 1. Rectángulo principal del objeto
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            # Grosor y estilo según tipo: Si es persona, borde fino; si es objeto en mano, más destacado
+            is_person = (det.category == "person")
+            border_thickness = 1 if is_person else 2
 
-            # 2. Esquinas reforzadas estilo HUD táctico
-            line_len = max(8, min((x2 - x1) // 5, (y2 - y1) // 5))
-            cv2.line(frame, (x1, y1), (x1 + line_len, y1), color, 3)
-            cv2.line(frame, (x1, y1), (x1, y1 + line_len), color, 3)
-            cv2.line(frame, (x2, y1), (x2 - line_len, y1), color, 3)
-            cv2.line(frame, (x2, y1), (x2, y1 + line_len), color, 3)
-            cv2.line(frame, (x1, y2), (x1 + line_len, y2), color, 3)
-            cv2.line(frame, (x1, y2), (x1, y2 - line_len), color, 3)
-            cv2.line(frame, (x2, y2), (x2 - line_len, y2), color, 3)
-            cv2.line(frame, (x2, y2), (x2, y2 - line_len), color, 3)
+            # 1. Rectángulo principal
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, border_thickness)
 
-            # 3. Etiqueta en español con fondo sólido
+            # 2. Esquinas reforzadas estilo HUD
+            line_len = max(6, min((x2 - x1) // 5, (y2 - y1) // 5, 20))
+            corner_thick = 2 if is_person else 3
+            cv2.line(frame, (x1, y1), (x1 + line_len, y1), color, corner_thick)
+            cv2.line(frame, (x1, y1), (x1, y1 + line_len), color, corner_thick)
+            cv2.line(frame, (x2, y1), (x2 - line_len, y1), color, corner_thick)
+            cv2.line(frame, (x2, y1), (x2, y1 + line_len), color, corner_thick)
+            cv2.line(frame, (x1, y2), (x1 + line_len, y2), color, corner_thick)
+            cv2.line(frame, (x1, y2), (x1, y2 - line_len), color, corner_thick)
+            cv2.line(frame, (x2, y2), (x2 - line_len, y2), color, corner_thick)
+            cv2.line(frame, (x2, y2), (x2, y2 - line_len), color, corner_thick)
+
+            # 3. Etiqueta con porcentaje
             label = f"{det.class_name_es.upper()} {int(det.confidence * 100)}%"
-            (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.48, 1)
-            cv2.rectangle(frame, (x1, max(0, y1 - 22)), (x1 + w + 8, max(0, y1)), color, -1)
-            cv2.putText(frame, label, (x1 + 4, max(0, y1 - 6)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 0, 0), 1, cv2.LINE_AA)
+            (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+            
+            # Posición de etiqueta: si no cabe arriba, ponerla dentro
+            label_y = max(h + 6, y1)
+            cv2.rectangle(frame, (x1, label_y - h - 6), (x1 + w + 8, label_y), color, -1)
+            cv2.putText(frame, label, (x1 + 4, label_y - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 1, cv2.LINE_AA)
 
         return frame
