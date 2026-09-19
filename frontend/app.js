@@ -297,10 +297,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Modal de Visualización y Eliminación de Fotos
-    const imageModal = document.getElementById('imageModal');
-    const modalImage = document.getElementById('modalImage');
-    const modalInfo = document.getElementById('modalInfo');
-    const modalClose = document.getElementById('modalClose');
     const btnDeleteModalImage = document.getElementById('btnDeleteModalImage');
     let currentOpenEventId = null;
 
