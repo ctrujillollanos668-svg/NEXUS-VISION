@@ -5,7 +5,6 @@ import time
 import threading
 from typing import Optional, Dict, Any
 import cv2
-import numpy as np
 
 from app.core.config import settings
 from app.camera.camera_manager import CameraManager

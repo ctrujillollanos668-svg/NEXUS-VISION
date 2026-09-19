@@ -3,6 +3,7 @@ Motor de IA Generativa Multimodal Ultra Rápido para NEXUS VISION.
 Optimizado con miniatura ultraligera, límite de tokens y llamadas asíncronas para respuestas en < 1 segundo.
 """
 import io
+import warnings
 from datetime import datetime
 from typing import Dict, Any, Optional
 from PIL import Image
@@ -10,6 +11,8 @@ from PIL import Image
 from app.core.config import settings
 from app.database.database import SessionLocal
 from app.database.models import EventLog
+
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 try:
     import google.generativeai as genai

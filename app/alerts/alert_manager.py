@@ -2,7 +2,6 @@
 Gestor de Alertas y Reglas de Seguridad para NEXUS VISION.
 Emite alertas sonoras, anuncios de voz hablados en Windows, capturas y registros en SQLite.
 """
-import os
 import time
 import threading
 from datetime import datetime
@@ -20,7 +19,7 @@ except ImportError:
 from app.database.database import SessionLocal
 from app.database.models import EventLog
 from app.detection.detector import Detection
-from app.zones.zone_manager import ZoneManager, SecurityZone
+from app.zones.zone_manager import ZoneManager
 from app.voice.voice_engine import VoiceEngine
 
 class AlertManager:

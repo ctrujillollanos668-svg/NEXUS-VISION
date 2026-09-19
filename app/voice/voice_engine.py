@@ -2,7 +2,6 @@
 Motor de Síntesis de Voz en Español para NEXUS VISION.
 Emite alertas y respuestas habladas de forma asíncrona mediante hilos para no congelar la cámara.
 """
-import time
 import queue
 import threading
 from typing import Optional
