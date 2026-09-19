@@ -91,44 +91,48 @@ class AlertManager:
 
                 if current_time - self.last_alert_time >= self.cooldown_seconds:
                     self.last_alert_time = current_time
-
                     event_type = f"INTRUSION_{zone.name.replace(' ', '_').upper()}"
                     description = f"Alerta de seguridad: {det.class_name_es} detectado dentro de {zone.name}"
+                    
+                    self.active_alert_banner = f"🚨 ALERTA: {det.class_name_es.upper()} EN {zone.name}"
+                    self.banner_expire_time = current_time + 4.0
 
-                    # 1. Alarma sonora y voz hablada
-                    self._play_alarm_sound()
-                    VoiceEngine.get_instance().speak(f"Alerta. Se detectó {det.class_name_es} en zona restringida.")
+                    # Despachar foto, sonido y registro en segundo plano sin congelar la cámara
+                    snapshot_frame = frame.copy()
+                    zone_name = zone.name
+                    obj_name = det.class_name_es
+                    conf = det.confidence
 
-                    # 2. Guardar captura fotográfica
-                    snapshot_path = self._save_alert_snapshot(frame, zone.name, det.class_name_es)
+                    def _async_alert_handler():
+                        self._play_alarm_sound()
+                        try:
+                            snapshot_path = self._save_alert_snapshot(snapshot_frame, zone_name, obj_name)
+                            db = SessionLocal()
+                            try:
+                                event = EventLog(
+                                    event_type=event_type,
+                                    object_name=obj_name,
+                                    confidence=conf,
+                                    camera_id=self.camera_id,
+                                    zone_name=zone_name,
+                                    alert_level="ALERT",
+                                    description=description,
+                                    snapshot_path=snapshot_path,
+                                    created_at=datetime.now()
+                                )
+                                db.add(event)
+                                db.commit()
+                                db.refresh(event)
+                                print(f"🚨 [ALERTA #{event.id}] {obj_name} en {zone_name} -> Captura: {snapshot_path}")
+                            except Exception as db_err:
+                                print(f"❌ Error guardando alerta en BD: {db_err}")
+                                db.rollback()
+                            finally:
+                                db.close()
+                        except Exception as e:
+                            print(f"❌ Error procesando alerta: {e}")
 
-                    # 3. Registrar en SQLite
-                    db = SessionLocal()
-                    try:
-                        event = EventLog(
-                            event_type=event_type,
-                            object_name=det.class_name_es,
-                            confidence=det.confidence,
-                            camera_id=self.camera_id,
-                            zone_name=zone.name,
-                            alert_level="ALERT",
-                            description=description,
-                            snapshot_path=snapshot_path,
-                            created_at=datetime.now()
-                        )
-                        db.add(event)
-                        db.commit()
-                        db.refresh(event)
-
-                        self.active_alert_banner = f"🚨 ALERTA #{event.id}: {det.class_name_es.upper()} EN {zone.name}"
-                        self.banner_expire_time = current_time + 4.0
-                        print(f"🚨 [ALERTA DE SEGURIDAD #{event.id}] {det.class_name_es} en {zone.name} -> Captura: {snapshot_path}")
-
-                    except Exception as e:
-                        print(f"❌ Error guardando alerta en BD: {e}")
-                        db.rollback()
-                    finally:
-                        db.close()
+                    threading.Thread(target=_async_alert_handler, daemon=True).start()
 
         banner_text = None
         if self.active_alert_banner and current_time < self.banner_expire_time:
