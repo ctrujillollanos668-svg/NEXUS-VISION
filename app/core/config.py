@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "NEXUS VISION"
-    VERSION: str = "0.5.1"
+    VERSION: str = "0.5.2"
     DEBUG: bool = True
     
     # Servidor Web
@@ -30,9 +30,9 @@ class Settings(BaseSettings):
     ENABLE_ALERT_SOUND: bool = True
     ALERT_COOLDOWN_SECONDS: float = 15.0
     
-    # IA Generativa Real (Google Gemini / LLMs)
+    # IA Generativa Real (Google Gemini Multimodal)
     GEMINI_API_KEY: str = ""
-    AI_MODEL_NAME: str = "gemini-1.5-flash"
+    AI_MODEL_NAME: str = "gemini-3.6-flash"
 
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),
