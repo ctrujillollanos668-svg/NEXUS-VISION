@@ -44,21 +44,10 @@
             
             <!-- Columna Izquierda: Reproductor de Video en Vivo -->
             <section class="card video-card">
-                <div class="card-header">
+                <div class="card-header" style="flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;">
                     <div class="card-title">
                         <span class="card-icon">📹</span>
                         <span id="activeCamTitle">TRANSMISIÓN EN TIEMPO REAL</span>
-                    </div>
-                    <div class="camera-controls-inline">
-                        <select id="cameraSelect" class="camera-dropdown" title="Cambiar Fuente de Video">
-                            <option value="0">📷 Buscando cámaras...</option>
-                        </select>
-                        <button class="btn btn-sm btn-outline" id="btnScanCams" title="Escanear Cámaras Conectadas">
-                            <span>🔍 Escanear</span>
-                        </button>
-                        <button class="btn btn-sm btn-primary" id="btnAddIpCam" title="Conectar Cámara de Seguridad Real (IP / RTSP)" style="white-space: nowrap;">
-                            <span>➕ Cámara IP / RTSP</span>
-                        </button>
                     </div>
                     <div class="stream-stats">
                         <span class="stat-pill"><strong id="fpsVal">0.0</strong> FPS</span>
@@ -66,6 +55,19 @@
                         <span class="stat-pill">MOV: <strong id="motionVal">0.0%</strong></span>
                         <span class="stat-pill device-pill" id="deviceVal">CPU</span>
                     </div>
+                </div>
+
+                <!-- Barra de Selección y Gestión de Cámaras -->
+                <div class="camera-toolbar" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <select id="cameraSelect" class="camera-dropdown" title="Cambiar Fuente de Video" style="flex: 1; min-width: 220px;">
+                        <option value="0">📷 Buscando cámaras...</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline" id="btnScanCams" title="Escanear Cámaras Conectadas">
+                        <span>🔍 Escanear</span>
+                    </button>
+                    <button class="btn btn-sm btn-primary" id="btnAddIpCam" title="Conectar Cámara de Seguridad Real (IP / RTSP)" style="white-space: nowrap;">
+                        <span>➕ Cámara IP / RTSP</span>
+                    </button>
                 </div>
 
                 <div class="video-container">

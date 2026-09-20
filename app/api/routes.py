@@ -45,15 +45,20 @@ class RemoteFramePushRequest(BaseModel):
     image_base64: str
 
 def generate_video_stream() -> Generator[bytes, None, None]:
-    """Generador de streaming MJPEG de alta fluidez para navegadores web."""
+    """Generador de streaming MJPEG con keepalive para evitar desconexiones o pantalla negra."""
     last_frame_bytes = None
+    idle_count = 0
     while True:
         frame_bytes = vision_service.get_latest_jpeg()
-        if frame_bytes is not None and frame_bytes is not last_frame_bytes:
-            last_frame_bytes = frame_bytes
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        time.sleep(0.012)
+        if frame_bytes is not None:
+            if frame_bytes is not last_frame_bytes or idle_count >= 25:
+                last_frame_bytes = frame_bytes
+                idle_count = 0
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            else:
+                idle_count += 1
+        time.sleep(0.02)
 
 @router.get("/video_feed")
 def video_feed():
@@ -360,9 +365,9 @@ def get_connected_devices():
     return remote_stream_manager.get_active_streams_detail()
 
 @router.get("/api/cameras")
-def get_cameras():
+def get_cameras(force: bool = False):
     """Retorna la lista de cámaras detectadas en el sistema."""
-    return vision_service.list_cameras()
+    return vision_service.list_cameras(force_refresh=force)
 
 @router.post("/api/cameras/switch")
 def switch_camera(req: CameraSwitchRequest):

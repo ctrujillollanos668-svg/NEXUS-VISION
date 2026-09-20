@@ -255,9 +255,9 @@ class VisionService:
                 "version": settings.VERSION
             }
 
-    def list_cameras(self) -> Dict[str, Any]:
+    def list_cameras(self, force_refresh: bool = False) -> Dict[str, Any]:
         """Lista las cámaras locales, IP/RTSP y remotas conectadas al sistema."""
-        local_cams = CameraManager.list_available_cameras(active_index=self.cam.camera_index)
+        local_cams = CameraManager.list_available_cameras(active_index=self.cam.camera_index, force_refresh=force_refresh)
         ip_cams = self.ip_camera_manager.get_cameras()
         remote_cams = self.remote_stream_manager.get_active_cameras()
 
@@ -290,7 +290,7 @@ class VisionService:
                 if not cam_info:
                     print(f"❌ Cámara IP {new_cam_str} no encontrada en el catálogo.")
                     return False
-                success = self.cam.switch_source(cam_info["url"])
+                success = self.cam.switch_source(cam_info["url"], raw_path=cam_info["url"])
                 if success:
                     self.cam.camera_index = new_cam_str
                     self.alert_manager.camera_id = 0

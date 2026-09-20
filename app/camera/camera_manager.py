@@ -23,8 +23,11 @@ except Exception:
 class CameraManager:
     """Administra la captura de video, escaneo de dispositivos y la interfaz HUD."""
 
+    _cached_hardware_cams: Optional[List[Dict[str, Any]]] = None
+
     def __init__(self, camera_index: Union[int, str] = 0, target_fps: int = 30):
         self.camera_index = camera_index
+        self.raw_source: str = str(camera_index)
         self.target_fps = target_fps
         self.cap: Optional[cv2.VideoCapture] = None
         self.is_running = False
@@ -32,49 +35,37 @@ class CameraManager:
         self.fps = 0.0
         self._lock = threading.Lock()
 
-    @staticmethod
-    def list_available_cameras(max_tested: int = 3, active_index: Optional[Union[int, str]] = None) -> List[Dict[str, Any]]:
+    @classmethod
+    def list_available_cameras(cls, max_tested: int = 3, active_index: Optional[Union[int, str]] = None, force_refresh: bool = False) -> List[Dict[str, Any]]:
         """
-        Escanea los puertos del sistema para detectar webcams conectadas sin interrumpir la cámara activa.
-        Diferencia automáticamente entre la webcam RGB y el sensor infrarrojo (IR).
+        Detecta webcams conectadas. Cachea el resultado para no sondear puertos vacíos repetidamente
+        evitando advertencias DSHOW en la consola.
         """
-        available_cams = []
         active_int = int(active_index) if active_index is not None and str(active_index).isdigit() else None
 
-        for index in range(max_tested):
-            if active_int is not None and index == active_int:
-                available_cams.append({
-                    "id": index,
-                    "name": f"📷 Cámara #{index} (En Uso)",
-                    "type": "hardware"
-                })
-                continue
+        if cls._cached_hardware_cams is None or force_refresh:
+            found = []
+            for index in range(max_tested):
+                temp_cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+                if temp_cap.isOpened():
+                    ret, frame = temp_cap.read()
+                    if ret and frame is not None:
+                        mean_lum = float(frame.mean())
+                        label = f"📷 Cámara #{index} (Sensor IR Infrarrojo)" if mean_lum < 1.5 else f"📷 Cámara #{index} (Webcam RGB Color)"
+                        found.append({"id": index, "name": label, "type": "hardware"})
+                    temp_cap.release()
 
-            # Usar exclusivamente DirectShow en Windows para evitar que OpenCV consulte sensores Obsensor inexistentes
-            temp_cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+            if not found:
+                found.append({"id": 0, "name": "📷 Cámara #0 (Webcam Principal)", "type": "hardware"})
+            cls._cached_hardware_cams = found
 
-            if temp_cap.isOpened():
-                ret, frame = temp_cap.read()
-                if ret and frame is not None:
-                    # Detectar si es sensor IR (pantalla oscura / infrarrojo)
-                    mean_lum = float(frame.mean())
-                    if mean_lum < 1.5:
-                        label = f"📷 Cámara #{index} (Sensor IR Infrarrojo)"
-                    else:
-                        label = f"📷 Cámara #{index} (Webcam RGB Color)"
-
-                    available_cams.append({
-                        "id": index,
-                        "name": label,
-                        "type": "hardware"
-                    })
-                temp_cap.release()
-
-        # Si no detectó ninguna, agregar al menos la #0
-        if not available_cams:
-            available_cams.append({"id": 0, "name": "📷 Cámara #0 (Principal)", "type": "hardware"})
-
-        return available_cams
+        cams = []
+        for c in cls._cached_hardware_cams:
+            item = dict(c)
+            if active_int is not None and item["id"] == active_int:
+                item["name"] = f"📷 Cámara #{item['id']} (En Uso)"
+            cams.append(item)
+        return cams
 
     def start(self) -> bool:
         """Inicia la captura de video con fallback automático de backends (DirectShow -> Default)."""
@@ -99,7 +90,7 @@ class CameraManager:
                     self.cap = cv2.VideoCapture(cam_idx)
             else:
                 # Si es URL RTSP / HTTP o ruta de archivo de video
-                self.cap = cv2.VideoCapture(str(self.camera_index))
+                self.cap = cv2.VideoCapture(str(self.raw_source or self.camera_index))
             
             if not self.cap or not self.cap.isOpened():
                 print(f"❌ Error: No se pudo acceder a la fuente {self.camera_index}.")
@@ -119,11 +110,10 @@ class CameraManager:
                     self.is_running = False
                     return False
                 # Rebobinar videos locales al inicio
-                if ".mp4" in self.camera_index.lower() or ".avi" in self.camera_index.lower():
-                    try:
-                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    except Exception:
-                        pass
+                try:
+                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                except Exception:
+                    pass
 
             # Configuración de resolución y buffer
             try:
@@ -139,38 +129,51 @@ class CameraManager:
             print(f"✔️ Fuente de video {self.camera_index} iniciada a 640x480.")
             return True
 
-    def switch_source(self, new_source: Union[int, str]) -> bool:
+    def switch_source(self, new_source: Union[int, str], raw_path: Optional[str] = None) -> bool:
         """
         Cambia en caliente la fuente de video actual por una nueva sin colapsar el sistema.
         Si la nueva fuente falla, revierte de forma automática a la cámara anterior.
         """
-        old_source = self.camera_index
+        old_index = self.camera_index
+        old_raw = self.raw_source
         print(f"🔄 Cambiando fuente de video de {self.camera_index} -> {new_source}...")
         self.stop()
         self.camera_index = int(new_source) if str(new_source).isdigit() else new_source
+        self.raw_source = str(raw_path or new_source)
         success = self.start()
         if not success:
-            print(f"⚠️ Error al abrir {new_source}. Revirtiendo de forma segura a {old_source}...")
-            self.camera_index = old_source
+            print(f"⚠️ Error al abrir {new_source}. Revirtiendo de forma segura a {old_index}...")
+            self.camera_index = old_index
+            self.raw_source = old_raw
             self.start()
             return False
         return True
 
     def read_frame(self) -> Tuple[bool, Optional[np.ndarray]]:
-        """Lee el siguiente frame de forma segura y actualiza FPS."""
+        """Lee el siguiente frame de forma segura y actualiza FPS con rebobinado infinito."""
         with self._lock:
             if not self.is_running or self.cap is None:
                 return False, None
 
+            # Rebobinado preventivo continuo para archivos de video (.mp4, .avi)
+            try:
+                total_frames = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
+                if total_frames and total_frames > 0:
+                    pos = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+                    if pos >= total_frames - 2:
+                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            except Exception:
+                pass
+
             ret, frame = self.cap.read()
             if not ret or frame is None:
-                # Si es un video en disco o stream simulado, rebobinar automáticamente para bucle infinito
-                if isinstance(self.camera_index, str) and (".mp4" in self.camera_index.lower() or ".avi" in self.camera_index.lower()):
-                    try:
-                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                        ret, frame = self.cap.read()
-                    except Exception:
-                        pass
+                # Rebobinar y reintentar si se alcanzó el fin del video
+                try:
+                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = self.cap.read()
+                except Exception:
+                    pass
+
                 if not ret or frame is None:
                     return False, None
 

@@ -518,9 +518,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 8. Gestión de Múltiples Cámaras (Locales y Remotas)
     let lastCameraListJson = '';
-    async function loadCameras() {
+    async function loadCameras(force = false) {
         try {
-            const res = await fetch('/api/cameras');
+            const url = force ? '/api/cameras?force=true' : '/api/cameras';
+            const res = await fetch(url);
             if (!res.ok) return;
             const data = await res.json();
             
@@ -541,7 +542,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
-            activeCamTitle.textContent = `TRANSMISIÓN EN TIEMPO REAL (${data.current_camera})`;
+            const currentCamObj = data.cameras.find(c => String(c.id) === String(data.current_camera));
+            const friendlyName = currentCamObj ? currentCamObj.name.replace(/^[📷🛡️]\s*/, '') : 'En Vivo';
+            activeCamTitle.textContent = `TRANSMISIÓN EN VIVO — ${friendlyName}`;
         } catch (err) {
             console.error("Error cargando cámaras:", err);
         }
@@ -549,6 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     cameraSelect.addEventListener('change', async (e) => {
         const newCamId = e.target.value;
+        const selectedText = e.target.options[e.target.selectedIndex]?.text || '';
         try {
             const res = await fetch('/api/cameras/switch', {
                 method: 'POST',
@@ -557,13 +561,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await res.json();
             if (data.success) {
-                activeCamTitle.textContent = `TRANSMISIÓN EN TIEMPO REAL (CÁMARA ${newCamId})`;
+                const cleanName = selectedText.replace(/^[📷🛡️]\s*/, '');
+                activeCamTitle.textContent = `TRANSMISIÓN EN VIVO — ${cleanName}`;
                 setTimeout(() => {
                     videoFeed.src = "/video_feed?t=" + Date.now();
-                }, 150);
-                speakText(`Cámara cambiada a la fuente ${newCamId}.`);
+                }, 100);
+                speakText("Cámara cambiada exitosamente.");
             } else {
-                alert(`No se pudo conectar a la cámara ${newCamId}.`);
+                alert(`No se pudo conectar a la cámara: ${data.message || newCamId}`);
                 loadCameras();
             }
         } catch (err) {
@@ -574,7 +579,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnScanCams.addEventListener('click', async () => {
         btnScanCams.disabled = true;
         btnScanCams.innerHTML = '<span>⏳ Escaneando...</span>';
-        await loadCameras();
+        await loadCameras(true);
         btnScanCams.disabled = false;
         btnScanCams.innerHTML = '<span>🔍 Escanear</span>';
     });
@@ -1075,7 +1080,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Intervalos y Carga Inicial
     setInterval(fetchStats, 1500);
     setInterval(fetchEvents, 4000);
-    setInterval(loadCameras, 4000);
     setInterval(fetchConnectedDevices, 3000);
 
     loadCameras();
