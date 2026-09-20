@@ -3,11 +3,22 @@ Módulo de Gestión de Cámara para NEXUS VISION.
 Controla la captura de video, cálculo de FPS, HUD táctico, alertas rojas de intrusión, barra de inventario
 y soporte para escaneo y cambio dinámico de múltiples cámaras / fuentes de video.
 """
+import os
 import time
 import threading
 from typing import Optional, Tuple, Dict, List, Any, Union
+
+# Silenciar avisos internos y advertencias C++ de OpenCV (Obsensor, FFMPEG)
+os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
+os.environ["OPENCV_VIDEOIO_DEBUG"] = "0"
+
 import cv2
 import numpy as np
+
+try:
+    cv2.setLogLevel(0)
+except Exception:
+    pass
 
 class CameraManager:
     """Administra la captura de video, escaneo de dispositivos y la interfaz HUD."""
@@ -39,9 +50,8 @@ class CameraManager:
                 })
                 continue
 
+            # Usar exclusivamente DirectShow en Windows para evitar que OpenCV consulte sensores Obsensor inexistentes
             temp_cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-            if not temp_cap.isOpened():
-                temp_cap = cv2.VideoCapture(index)
 
             if temp_cap.isOpened():
                 ret, frame = temp_cap.read()
@@ -127,7 +137,15 @@ class CameraManager:
 
             ret, frame = self.cap.read()
             if not ret or frame is None:
-                return False, None
+                # Si es un video en disco o stream simulado, rebobinar automáticamente para bucle infinito
+                if isinstance(self.camera_index, str) and (".mp4" in self.camera_index.lower() or ".avi" in self.camera_index.lower()):
+                    try:
+                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        ret, frame = self.cap.read()
+                    except Exception:
+                        pass
+                if not ret or frame is None:
+                    return False, None
 
             current_time = time.time()
             diff = current_time - self.prev_time

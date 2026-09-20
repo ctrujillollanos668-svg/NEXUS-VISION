@@ -108,6 +108,36 @@ def get_event_history(limit: int = 50):
     finally:
         db.close()
 
+@router.delete("/api/events/clear")
+def clear_events(camera: Optional[str] = None):
+    """Elimina eventos de forma masiva (por cámara o todo el historial) y limpia archivos asociados."""
+    db = SessionLocal()
+    try:
+        query = db.query(EventLog)
+        if camera and camera != "ALL":
+            query = query.filter(EventLog.zone_name == camera)
+
+        events_to_delete = query.all()
+        deleted_count = len(events_to_delete)
+
+        for ev in events_to_delete:
+            if ev.snapshot_path:
+                try:
+                    p = Path(ev.snapshot_path)
+                    if p.exists():
+                        p.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            db.delete(ev)
+
+        db.commit()
+        return {"success": True, "deleted_count": deleted_count, "message": f"Se eliminaron {deleted_count} capturas con éxito."}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "message": f"Error al limpiar eventos: {str(e)}"}
+    finally:
+        db.close()
+
 @router.delete("/api/events/{event_id}")
 def delete_event(event_id: int):
     """Elimina una captura de seguridad tanto de la base de datos como del disco físico."""
@@ -399,11 +429,17 @@ def connect_public_camera(pub_id: str):
         cam_id = existing["id"]
 
     success = vision_service.switch_camera(cam_id)
+    if not success:
+        return {
+            "success": False,
+            "message": f"El servidor externo de '{cam['name']}' no responde (apagado o con firewall). Selecciona la 'Cámara CCTV Tráfico Garantizada 24/7' o conecta tu propia cámara IP."
+        }
+
     return {
-        "success": success,
+        "success": True,
         "camera_id": cam_id,
         "name": cam["name"],
-        "message": f"Conectado a la cámara pública: {cam['name']}" if success else "Error al conectar con la cámara pública."
+        "message": f"Conectado a la cámara: {cam['name']}"
     }
 
 

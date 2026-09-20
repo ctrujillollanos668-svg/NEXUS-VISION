@@ -194,12 +194,23 @@
 
         <!-- Sección Inferior: Galería de Historial de Capturas y Eventos -->
         <section class="card history-section">
-            <div class="card-header">
+            <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
                 <div class="card-title">
                     <span class="card-icon">🗄️</span>
                     <span>HISTORIAL DE EVENTOS Y CAPTURAS DE SEGURIDAD (SQLITE)</span>
                 </div>
-                <button class="btn btn-sm btn-outline" id="btnReloadEvents">🔄 Actualizar Historial</button>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button class="btn btn-sm btn-outline" id="btnReloadEvents">🔄 Actualizar</button>
+                    <button class="btn btn-sm btn-outline" id="btnClearEvents" style="border-color: rgba(255, 0, 85, 0.5); color: #ff6b8b;" title="Eliminar las capturas de la cámara seleccionada o todo el historial">🗑️ Vaciar Historial</button>
+                </div>
+            </div>
+
+            <!-- Barra de Filtros por Cámara -->
+            <div id="cameraFilterBar" style="padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <span style="font-size: 0.78rem; font-weight: 700; color: #8a99b5; text-transform: uppercase;">📁 Filtrar por Cámara:</span>
+                <div id="cameraFilterChips" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button class="btn btn-sm btn-primary filter-cam-btn" data-cam="ALL" style="padding: 4px 10px; font-size: 0.76rem;">Todas las Cámaras</button>
+                </div>
             </div>
 
             <div class="events-gallery" id="eventsGallery">

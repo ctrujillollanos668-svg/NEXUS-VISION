@@ -332,13 +332,25 @@ class VisionService:
 
         cam_idx_str = str(self.cam.camera_index)
         if cam_idx_str.startswith("remote_"):
-            cam_folder = f"camara_amigo_{cam_idx_str.replace('remote_disp_', '').replace('remote_', '')}"
-            cam_label = f"Amigo ({cam_idx_str.replace('remote_disp_', '#')})"
+            clean_disp = cam_idx_str.replace('remote_disp_', '').replace('remote_', '')
+            cam_folder = f"Amigo_{clean_disp}"
+            cam_label = f"Amigo #{clean_disp}"
         elif cam_idx_str.startswith("ip_cam_"):
-            cam_folder = f"camara_{cam_idx_str}"
-            cam_label = f"Cámara IP ({cam_idx_str})"
+            cams = self.ip_camera_manager.get_cameras()
+            cam_info = next((c for c in cams if c.get("id") == cam_idx_str), None)
+            raw_name = cam_info.get("display_name", "") if cam_info else ""
+            if not raw_name and cam_info:
+                raw_name = cam_info.get("name", "")
+            if not raw_name:
+                raw_name = cam_idx_str
+            for emo in ["🛡️", "🚗", "🎓", "🏢", "🏭", "🔬", "📷", "🌐"]:
+                raw_name = raw_name.replace(emo, "")
+            raw_name = raw_name.strip()
+            clean_folder_name = "".join(c if c.isalnum() or c in (" ", "_", "-") else "_" for c in raw_name).strip().replace(" ", "_")
+            cam_folder = f"Camara_{clean_folder_name}"
+            cam_label = raw_name
         else:
-            cam_folder = f"webcam_{cam_idx_str}_local"
+            cam_folder = "Webcam_Principal"
             cam_label = f"Webcam #{cam_idx_str}"
 
         snapshots_dir = Path(__file__).resolve().parent.parent.parent / "storage" / "snapshots"

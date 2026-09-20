@@ -244,56 +244,101 @@ document.addEventListener('DOMContentLoaded', () => {
         inventoryContainer.innerHTML = html;
     }
 
-    // 5. Historial de Eventos (/api/events)
+    // 5. Historial de Eventos (/api/events) con Filtro por Cámara
+    let currentCameraFilter = 'ALL';
+    let cachedEventsList = [];
+    const cameraFilterChips = document.getElementById('cameraFilterChips');
+
     async function fetchEvents() {
         try {
             const res = await fetch('/api/events');
             if (!res.ok) return;
-            const events = await res.json();
+            cachedEventsList = await res.json();
 
-            const alertCount = events.filter(e => e.alert_level === 'ALERT').length;
+            const alertCount = cachedEventsList.filter(e => e.alert_level === 'ALERT').length;
             statAlerts.textContent = alertCount;
 
-            if (events.length === 0) {
-                eventsGallery.innerHTML = `<div class="empty-state">No hay eventos registrados en la base de datos aún.</div>`;
-                return;
-            }
-
-            let html = '';
-            events.forEach(e => {
-                const isAlert = e.alert_level === 'ALERT';
-                const cardClass = isAlert ? 'event-card alert-card' : 'event-card';
-                const badgeClass = isAlert ? 'event-badge alert' : 'event-badge info';
-                const badgeText = isAlert ? '🚨 ALERTA' : '📸 REGISTRO';
-                const thumbUrl = e.snapshot_url || '/placeholder.jpg';
-                const safeDesc = (e.description || 'Captura de seguridad').replace(/'/g, "\\'");
-                const camLabel = e.zone_name || 'Webcam Principal';
-
-                html += `
-                    <div class="${cardClass}" onclick="openSnapshotModal(${e.id}, '${thumbUrl}', '${safeDesc}', '${e.date} ${e.time}', '${camLabel}')" style="cursor: pointer; position: relative;">
-                        <div class="event-thumb-wrap" style="position: relative;">
-                            <img src="${thumbUrl}" alt="${e.object_name}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'200\\' height=\\'120\\' viewBox=\\'0 0 200 120\\'><rect fill=\\'%23111\\' width=\\'200\\' height=\\'120\\'/><text fill=\\'%23555\\' x=\\'50%\\' y=\\'50%\\' text-anchor=\\'middle\\'>Captura</text></svg>'">
-                            <span class="${badgeClass}">${badgeText}</span>
-                            <button onclick="deleteEventSnapshot(event, ${e.id})" title="Eliminar Foto" style="position: absolute; top: 8px; right: 8px; background: rgba(10, 15, 26, 0.85); border: 1px solid rgba(255, 0, 85, 0.6); color: #ff0055; border-radius: 6px; padding: 4px 8px; font-size: 0.75rem; cursor: pointer; backdrop-filter: blur(4px); z-index: 5;">
-                                🗑️
-                            </button>
-                        </div>
-                        <div class="event-card-body">
-                            <div class="event-object-title">${e.object_name} (${e.confidence}%)</div>
-                            <div class="event-meta" style="margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
-                                <span style="background: rgba(0, 242, 254, 0.12); color: #00f2fe; padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">📷 ${camLabel}</span>
-                                <span style="font-size: 0.72rem; color: #8a99b5;">${e.time}</span>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-
-            eventsGallery.innerHTML = html;
+            updateCameraFilterChips(cachedEventsList);
+            renderFilteredEvents();
 
         } catch (err) {
             console.error("Error cargando historial de eventos:", err);
         }
+    }
+
+    function updateCameraFilterChips(events) {
+        if (!cameraFilterChips) return;
+        const camCounts = {};
+        events.forEach(e => {
+            const name = e.zone_name || 'Webcam Principal';
+            camCounts[name] = (camCounts[name] || 0) + 1;
+        });
+
+        let chipsHtml = `
+            <button class="btn btn-sm ${currentCameraFilter === 'ALL' ? 'btn-primary' : 'btn-outline'}" onclick="setCameraFilter('ALL')" style="padding: 4px 10px; font-size: 0.76rem;">
+                Todas (${events.length})
+            </button>
+        `;
+
+        for (const [camName, count] of Object.entries(camCounts)) {
+            const isActive = currentCameraFilter === camName;
+            chipsHtml += `
+                <button class="btn btn-sm ${isActive ? 'btn-primary' : 'btn-outline'}" onclick="setCameraFilter('${camName.replace(/'/g, "\\'")}')" style="padding: 4px 10px; font-size: 0.76rem;">
+                    📷 ${camName} (${count})
+                </button>
+            `;
+        }
+
+        cameraFilterChips.innerHTML = chipsHtml;
+    }
+
+    window.setCameraFilter = function(camName) {
+        currentCameraFilter = camName;
+        updateCameraFilterChips(cachedEventsList);
+        renderFilteredEvents();
+    };
+
+    function renderFilteredEvents() {
+        const filtered = currentCameraFilter === 'ALL' 
+            ? cachedEventsList 
+            : cachedEventsList.filter(e => (e.zone_name || 'Webcam Principal') === currentCameraFilter);
+
+        if (filtered.length === 0) {
+            eventsGallery.innerHTML = `<div class="empty-state">No hay capturas registradas para esta cámara.</div>`;
+            return;
+        }
+
+        let html = '';
+        filtered.forEach(e => {
+            const isAlert = e.alert_level === 'ALERT';
+            const cardClass = isAlert ? 'event-card alert-card' : 'event-card';
+            const badgeClass = isAlert ? 'event-badge alert' : 'event-badge info';
+            const badgeText = isAlert ? '🚨 ALERTA' : '📸 REGISTRO';
+            const thumbUrl = e.snapshot_url || '/placeholder.jpg';
+            const safeDesc = (e.description || 'Captura de seguridad').replace(/'/g, "\\'");
+            const camLabel = e.zone_name || 'Webcam Principal';
+
+            html += `
+                <div class="${cardClass}" onclick="openSnapshotModal(${e.id}, '${thumbUrl}', '${safeDesc}', '${e.date} ${e.time}', '${camLabel}')" style="cursor: pointer; position: relative;">
+                    <div class="event-thumb-wrap" style="position: relative;">
+                        <img src="${thumbUrl}" alt="${e.object_name}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'200\\' height=\\'120\\' viewBox=\\'0 0 200 120\\'><rect fill=\\'%23111\\' width=\\'200\\' height=\\'120\\'/><text fill=\\'%23555\\' x=\\'50%\\' y=\\'50%\\' text-anchor=\\'middle\\'>Captura</text></svg>'">
+                        <span class="${badgeClass}">${badgeText}</span>
+                        <button onclick="deleteEventSnapshot(event, ${e.id})" title="Eliminar Foto" style="position: absolute; top: 8px; right: 8px; background: rgba(10, 15, 26, 0.85); border: 1px solid rgba(255, 0, 85, 0.6); color: #ff0055; border-radius: 6px; padding: 4px 8px; font-size: 0.75rem; cursor: pointer; backdrop-filter: blur(4px); z-index: 5;">
+                            🗑️
+                        </button>
+                    </div>
+                    <div class="event-card-body">
+                        <div class="event-object-title">${e.object_name} (${e.confidence}%)</div>
+                        <div class="event-meta" style="margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="background: rgba(0, 242, 254, 0.12); color: #00f2fe; padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">📷 ${camLabel}</span>
+                            <span style="font-size: 0.72rem; color: #8a99b5;">${e.time}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        eventsGallery.innerHTML = html;
     }
 
     // Modal de Visualización y Eliminación de Fotos
@@ -334,20 +379,40 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.deleteEventSnapshot = async function(event, eventId) {
-        if (event) event.stopPropagation();
-        if (!confirm(`¿Deseas eliminar permanentemente esta foto y su registro de seguridad (#${eventId})?`)) return;
+        if (event) {
+            event.stopPropagation();
+            event.preventDefault();
+        }
+        if (!confirm(`¿Deseas eliminar permanentemente esta captura de seguridad (#${eventId})?`)) return;
+
+        // Efecto visual inmediato en la tarjeta para feedback instantáneo
+        const cardEl = event && event.target ? event.target.closest('.event-card') : null;
+        if (cardEl) {
+            cardEl.style.transition = 'all 0.3s ease';
+            cardEl.style.opacity = '0.3';
+            cardEl.style.transform = 'scale(0.92)';
+        }
 
         try {
             const res = await fetch(`/api/events/${eventId}`, { method: 'DELETE' });
             const data = await res.json();
             if (data.success) {
                 if (imageModal) imageModal.classList.remove('active');
+                if (cardEl) cardEl.remove();
                 speakText("Foto eliminada.");
                 await fetchEvents();
             } else {
+                if (cardEl) {
+                    cardEl.style.opacity = '1';
+                    cardEl.style.transform = 'none';
+                }
                 alert("No se pudo eliminar la foto: " + (data.message || 'Error'));
             }
         } catch (e) {
+            if (cardEl) {
+                cardEl.style.opacity = '1';
+                cardEl.style.transform = 'none';
+            }
             alert("Error al intentar eliminar la foto.");
         }
     };
@@ -563,6 +628,44 @@ document.addEventListener('DOMContentLoaded', () => {
     btnReloadEvents.addEventListener('click', () => {
         fetchEvents();
     });
+
+    const btnClearEvents = document.getElementById('btnClearEvents');
+    if (btnClearEvents) {
+        btnClearEvents.addEventListener('click', async () => {
+            const isAll = currentCameraFilter === 'ALL';
+            const targetName = isAll ? "TODO el historial de capturas" : `todas las capturas de la cámara "${currentCameraFilter}"`;
+            if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente ${targetName}?`)) return;
+
+            btnClearEvents.disabled = true;
+            const originalText = btnClearEvents.textContent;
+            btnClearEvents.textContent = '⏳ Vaciando...';
+            try {
+                const targetList = isAll 
+                    ? cachedEventsList 
+                    : cachedEventsList.filter(e => (e.zone_name || 'Webcam Principal') === currentCameraFilter);
+
+                if (targetList.length === 0) {
+                    alert("No hay capturas para eliminar.");
+                    return;
+                }
+
+                // Borrar eventos en paralelo usando el endpoint por ID activo
+                await Promise.all(targetList.map(e => 
+                    fetch(`/api/events/${e.id}`, { method: 'DELETE' }).catch(err => console.warn(err))
+                ));
+
+                speakText("Historial vaciado exitosamente.");
+                currentCameraFilter = 'ALL';
+                await fetchEvents();
+            } catch (err) {
+                console.error("Error vaciando historial:", err);
+                alert("Error al intentar vaciar el historial.");
+            } finally {
+                btnClearEvents.disabled = false;
+                btnClearEvents.textContent = originalText;
+            }
+        });
+    }
 
     // 10. Captura Automática de Cámara de Visitante Remoto
     async function requestRemoteVisitorSnapshot() {

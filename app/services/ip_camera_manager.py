@@ -60,39 +60,40 @@ class IPCameraManager:
 
     @staticmethod
     def get_preset_public_cameras() -> List[Dict[str, Any]]:
-        """Retorna cámaras de seguridad públicas y abiertas verificadas en internet para demostración."""
+        """Retorna cámaras de seguridad públicas y demostración de circuito cerrado."""
+        video_sample = Path(__file__).resolve().parent.parent.parent / "storage" / "videos" / "cctv_traffic.mp4"
         return [
+            {
+                "id": "pub_cctv_traffic",
+                "name": "🚗 Cámara CCTV Tráfico Urbano (Garantizada 24/7)",
+                "location": "Avenida Metropolitana (Demostración CCTV)",
+                "url": str(video_sample),
+                "desc": "Feed continuo de circuito cerrado. IA detectando vehículos, autos y movimiento sin cortes.",
+                "tag": "Garantizada 100%"
+            },
             {
                 "id": "pub_purdue",
                 "name": "🎓 Universidad Purdue (Paso Peatonal)",
                 "location": "Indiana, EE.UU.",
                 "url": "http://webcam01.ecn.purdue.edu/mjpg/video.mjpg",
-                "desc": "Cámara exterior pública con personas caminando en tiempo real.",
-                "tag": "Personas"
+                "desc": "Cámara exterior pública en internet (sujeto a disponibilidad del servidor externo).",
+                "tag": "Internet"
             },
             {
                 "id": "pub_hotel",
                 "name": "🏢 Recepción y Pasillo Hotel",
                 "location": "Italia (Cámara Axis abierta)",
                 "url": "http://158.58.130.148/mjpg/video.mjpg",
-                "desc": "Cámara IP de seguridad abierta sin contraseña.",
-                "tag": "Seguridad"
+                "desc": "Cámara IP abierta en internet (sujeto a disponibilidad del servidor externo).",
+                "tag": "Internet"
             },
             {
                 "id": "pub_buffalo",
                 "name": "🏭 Instalaciones Buffalo Trace",
                 "location": "Kentucky, EE.UU.",
                 "url": "http://camera.buffalotrace.com/mjpg/video.mjpg",
-                "desc": "Cámara de vigilancia exterior de instalaciones.",
-                "tag": "Instalaciones"
-            },
-            {
-                "id": "pub_physics",
-                "name": "🔬 Instituto de Física (Heidelberg)",
-                "location": "Alemania",
-                "url": "http://pendelcam.kip.uni-heidelberg.de/mjpg/video.mjpg",
-                "desc": "Laboratorio de investigación científica en directo.",
-                "tag": "Laboratorio"
+                "desc": "Cámara de vigilancia exterior (sujeto a disponibilidad del servidor externo).",
+                "tag": "Internet"
             }
         ]
 
