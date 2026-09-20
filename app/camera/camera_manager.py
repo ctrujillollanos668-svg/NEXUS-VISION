@@ -106,6 +106,25 @@ class CameraManager:
                 self.is_running = False
                 return False
 
+            # Validar que la fuente remota o archivo entregue fotogramas reales
+            if isinstance(self.camera_index, str):
+                ret, test_frame = self.cap.read()
+                if not ret or test_frame is None or test_frame.size == 0:
+                    print(f"❌ Error: La fuente {self.camera_index} no entrega fotogramas de video válidos.")
+                    try:
+                        self.cap.release()
+                    except Exception:
+                        pass
+                    self.cap = None
+                    self.is_running = False
+                    return False
+                # Rebobinar videos locales al inicio
+                if ".mp4" in self.camera_index.lower() or ".avi" in self.camera_index.lower():
+                    try:
+                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    except Exception:
+                        pass
+
             # Configuración de resolución y buffer
             try:
                 self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -123,11 +142,19 @@ class CameraManager:
     def switch_source(self, new_source: Union[int, str]) -> bool:
         """
         Cambia en caliente la fuente de video actual por una nueva sin colapsar el sistema.
+        Si la nueva fuente falla, revierte de forma automática a la cámara anterior.
         """
+        old_source = self.camera_index
         print(f"🔄 Cambiando fuente de video de {self.camera_index} -> {new_source}...")
         self.stop()
         self.camera_index = int(new_source) if str(new_source).isdigit() else new_source
-        return self.start()
+        success = self.start()
+        if not success:
+            print(f"⚠️ Error al abrir {new_source}. Revirtiendo de forma segura a {old_source}...")
+            self.camera_index = old_source
+            self.start()
+            return False
+        return True
 
     def read_frame(self) -> Tuple[bool, Optional[np.ndarray]]:
         """Lee el siguiente frame de forma segura y actualiza FPS."""
@@ -218,12 +245,13 @@ class CameraManager:
         # Textos Panel Derecho
         cv2.putText(frame, "RESUMEN EN MOVIMIENTO" if only_moving else "RESUMEN TOTAL", (w - 345, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 200, 255), 1)
-        cv2.putText(frame, f"Personas:    {category_counts.get('person', 0)}", (w - 345, 48),
+        total_people = category_counts.get('person', 0) + category_counts.get('face', 0)
+        cv2.putText(frame, f"Personas/Caras:  {total_people}", (w - 345, 48),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 140, 0), 1)
-        cv2.putText(frame, f"Dispositivos: {category_counts.get('device', 0)}", (w - 345, 66),
+        cv2.putText(frame, f"Animales/Perros: {category_counts.get('animal', 0)}", (w - 345, 66),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 165, 255), 1)
+        cv2.putText(frame, f"Dispositivos:    {category_counts.get('device', 0)}", (w - 345, 84),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 128), 1)
-        cv2.putText(frame, f"Utiles/Objetos: {category_counts.get('item', 0)}", (w - 345, 84),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 255), 1)
 
         # Textos Barra Inferior
         if inventory:

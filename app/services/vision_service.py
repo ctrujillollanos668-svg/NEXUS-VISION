@@ -131,8 +131,8 @@ class VisionService:
             current_t = time.time()
             if self.auto_snapshot_enabled and detections:
                 if current_t - self.last_auto_snapshot_time >= self.auto_snapshot_cooldown:
-                    # Priorizar personas o primer objeto
-                    target_det = next((d for d in detections if d.category in ["person", "device"]), detections[0])
+                    # Priorizar personas, rostros, animales/perros o primer objeto
+                    target_det = next((d for d in detections if d.category in ["person", "face", "animal", "device"]), detections[0])
                     if target_det and target_det.confidence >= 0.40:
                         self.last_auto_snapshot_time = current_t
                         threading.Thread(

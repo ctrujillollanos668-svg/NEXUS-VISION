@@ -61,39 +61,25 @@ class IPCameraManager:
     @staticmethod
     def get_preset_public_cameras() -> List[Dict[str, Any]]:
         """Retorna cámaras de seguridad públicas y demostración de circuito cerrado."""
-        video_sample = Path(__file__).resolve().parent.parent.parent / "storage" / "videos" / "cctv_traffic.mp4"
+        base_dir = Path(__file__).resolve().parent.parent.parent / "storage" / "videos"
+        video_traffic = base_dir / "cctv_traffic.mp4"
+        video_pedestrians = base_dir / "cctv_pedestrians.mp4"
         return [
             {
                 "id": "pub_cctv_traffic",
                 "name": "🚗 Cámara CCTV Tráfico Urbano (Garantizada 24/7)",
                 "location": "Avenida Metropolitana (Demostración CCTV)",
-                "url": str(video_sample),
+                "url": str(video_traffic),
                 "desc": "Feed continuo de circuito cerrado. IA detectando vehículos, autos y movimiento sin cortes.",
                 "tag": "Garantizada 100%"
             },
             {
-                "id": "pub_purdue",
-                "name": "🎓 Universidad Purdue (Paso Peatonal)",
-                "location": "Indiana, EE.UU.",
-                "url": "http://webcam01.ecn.purdue.edu/mjpg/video.mjpg",
-                "desc": "Cámara exterior pública en internet (sujeto a disponibilidad del servidor externo).",
-                "tag": "Internet"
-            },
-            {
-                "id": "pub_hotel",
-                "name": "🏢 Recepción y Pasillo Hotel",
-                "location": "Italia (Cámara Axis abierta)",
-                "url": "http://158.58.130.148/mjpg/video.mjpg",
-                "desc": "Cámara IP abierta en internet (sujeto a disponibilidad del servidor externo).",
-                "tag": "Internet"
-            },
-            {
-                "id": "pub_buffalo",
-                "name": "🏭 Instalaciones Buffalo Trace",
-                "location": "Kentucky, EE.UU.",
-                "url": "http://camera.buffalotrace.com/mjpg/video.mjpg",
-                "desc": "Cámara de vigilancia exterior (sujeto a disponibilidad del servidor externo).",
-                "tag": "Internet"
+                "id": "pub_cctv_pedestrians",
+                "name": "🚶 Cámara CCTV Peatonal y Seguridad (Garantizada 24/7)",
+                "location": "Paso Peatonal y Vigilancia Perimetral",
+                "url": str(video_pedestrians),
+                "desc": "Circuito cerrado en vivo. IA analizando personas, bicicletas y peatones en tiempo real.",
+                "tag": "Garantizada 100%"
             }
         ]
 

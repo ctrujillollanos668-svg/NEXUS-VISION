@@ -1,26 +1,34 @@
 [
   {
-    "id": "ip_cam_726043",
-    "name": "🛡️ 🎓 Universidad Purdue (Paso Peatonal)",
-    "display_name": "🎓 Universidad Purdue (Paso Peatonal)",
-    "url": "http://webcam01.ecn.purdue.edu/mjpg/video.mjpg",
-    "type": "ip_camera",
-    "added_at": "2026-09-19 18:48:46"
-  },
-  {
-    "id": "ip_cam_992416",
-    "name": "🛡️ 🏭 Instalaciones Buffalo Trace",
-    "display_name": "🏭 Instalaciones Buffalo Trace",
-    "url": "http://camera.buffalotrace.com/mjpg/video.mjpg",
-    "type": "ip_camera",
-    "added_at": "2026-09-19 18:53:12"
-  },
-  {
     "id": "ip_cam_287267",
+    "name": "🛡️ 🚗 Cámara CCTV Tráfico Urbano (Garantizada 24/7)",
+    "display_name": "🚗 Cámara CCTV Tráfico Urbano (Garantizada 24/7)",
+    "url": "storage/videos/cctv_traffic.mp4",
+    "type": "ip_camera",
+    "added_at": "2026-09-19 18:58:07"
+  },
+  {
+    "id": "ip_cam_418932",
+    "name": "🛡️ 🚶 Cámara CCTV Peatonal y Seguridad (Garantizada 24/7)",
+    "display_name": "🚶 Cámara CCTV Peatonal y Seguridad (Garantizada 24/7)",
+    "url": "storage/videos/cctv_pedestrians.mp4",
+    "type": "ip_camera",
+    "added_at": "2026-09-20 10:36:00"
+  },
+  {
+    "id": "ip_cam_937413",
     "name": "🛡️ 🚗 Cámara CCTV Tráfico Urbano (Garantizada 24/7)",
     "display_name": "🚗 Cámara CCTV Tráfico Urbano (Garantizada 24/7)",
     "url": "C:\\Users\\ctruj\\OneDrive\\Desktop\\Nueva carpeta\\python\\storage\\videos\\cctv_traffic.mp4",
     "type": "ip_camera",
-    "added_at": "2026-09-19 18:58:07"
+    "added_at": "2026-09-20 10:42:17"
+  },
+  {
+    "id": "ip_cam_118564",
+    "name": "🛡️ 🚶 Cámara CCTV Peatonal y Seguridad (Garantizada 24/7)",
+    "display_name": "🚶 Cámara CCTV Peatonal y Seguridad (Garantizada 24/7)",
+    "url": "C:\\Users\\ctruj\\OneDrive\\Desktop\\Nueva carpeta\\python\\storage\\videos\\cctv_pedestrians.mp4",
+    "type": "ip_camera",
+    "added_at": "2026-09-20 10:45:18"
   }
 ]

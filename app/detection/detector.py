@@ -28,8 +28,11 @@ class ObjectDetector:
     """Motor de inferencia universal con aceleración de hardware y soporte de movimiento."""
 
     ITEMS_CATALOG: List[Tuple[str, str, str]] = [
-        # Humanos y accesorios
+        # Rostros y humanos
+        ("face", "Rostro Humano", "face"),
+        ("human face", "Rostro Humano", "face"),
         ("person", "Persona", "person"),
+        ("hand", "Mano", "person"),
         ("glasses", "Gafas", "item"),
         ("sunglasses", "Gafas de Sol", "item"),
         ("watch", "Reloj", "device"),
@@ -83,10 +86,16 @@ class ObjectDetector:
         ("door", "Puerta", "furniture"),
         ("potted plant", "Planta", "furniture"),
 
-        # Animales y vehículos
+        # Animales y mascotas (con detección de cara y cachorros)
         ("dog", "Perro", "animal"),
+        ("dog face", "Cara de Perro", "animal"),
+        ("puppy", "Cachorro", "animal"),
         ("cat", "Gato", "animal"),
+        ("cat face", "Cara de Gato", "animal"),
+        ("pet", "Mascota", "animal"),
         ("bird", "Ave", "animal"),
+
+        # Vehículos
         ("car", "Auto", "vehicle"),
         ("motorcycle", "Motocicleta", "vehicle"),
         ("bicycle", "Bicicleta", "vehicle")
@@ -94,6 +103,7 @@ class ObjectDetector:
 
     COLORS: Dict[str, Tuple[int, int, int]] = {
         "person": (255, 140, 0),      # Azul / Cyan
+        "face": (255, 240, 0),        # Cyan Neón para Rostros
         "animal": (0, 165, 255),      # Naranja
         "vehicle": (200, 0, 200),     # Púrpura
         "device": (0, 255, 128),      # Verde Neón
@@ -163,7 +173,7 @@ class ObjectDetector:
         self.last_inference_ms = (time.perf_counter() - t_start) * 1000.0
 
         detections: List[Detection] = []
-        category_counts: Dict[str, int] = {"person": 0, "animal": 0, "vehicle": 0, "device": 0, "furniture": 0, "item": 0, "other": 0}
+        category_counts: Dict[str, int] = {"person": 0, "face": 0, "animal": 0, "vehicle": 0, "device": 0, "furniture": 0, "item": 0, "other": 0}
         item_inventory: Dict[str, int] = {}
 
         for box in results.boxes:
